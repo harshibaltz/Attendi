@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { authApi } from '../../lib/auth';
-import { Eye, EyeOff, ArrowRight, GraduationCap, Shield, BookOpen } from 'lucide-react';
+import { Eye, EyeOff, ArrowRight, GraduationCap } from 'lucide-react';
 
 const Login = ({ onLogin, onSwitchToSignUp }) => {
   const [identifier, setIdentifier] = useState('');
@@ -155,37 +155,7 @@ const Login = ({ onLogin, onSwitchToSignUp }) => {
             <button onClick={onSwitchToSignUp} className="text-primary font-semibold hover:opacity-80 transition-opacity">Register</button>
           </p>
 
-          {/* Demo Accounts */}
-          <div className="mt-8 p-4 rounded-xl border border-border-default bg-page-bg">
-            <p className="text-[12px] font-bold text-text-primary mb-3">Demo Accounts</p>
-            <div className="space-y-2.5">
-              <div className="flex items-center gap-2.5">
-                <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ backgroundColor: 'rgba(37,99,235,0.1)' }}>
-                  <GraduationCap size={13} className="text-info" />
-                </div>
-                <p className="text-[12px] text-text-secondary">
-                  Student — <span className="font-semibold text-text-primary">FE23A001</span> / <span className="font-semibold text-text-primary">student123</span>
-                </p>
-              </div>
-              <div className="flex items-center gap-2.5">
-                <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ backgroundColor: 'rgba(63,53,181,0.1)' }}>
-                  <BookOpen size={13} style={{ color: '#3F35B5' }} />
-                </div>
-                <p className="text-[12px] text-text-secondary">
-                  Lecturer — <span className="font-semibold text-text-primary">dr.smith@fet.edu</span> / <span className="font-semibold text-text-primary">lecturer123</span>
-                </p>
-              </div>
-              <div className="flex items-center gap-2.5">
-                <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ backgroundColor: 'rgba(220,38,38,0.1)' }}>
-                  <Shield size={13} className="text-danger" />
-                </div>
-                <p className="text-[12px] text-text-secondary">
-                  Admin — <span className="font-semibold text-text-primary">admin@fet.edu</span> / <span className="font-semibold text-text-primary">admin123</span>
-                </p>
-              </div>
-            </div>
           </div>
-        </div>
       </div>
 
       {/* Right: Visual Section */}
@@ -206,7 +176,7 @@ const Login = ({ onLogin, onSwitchToSignUp }) => {
           </p>
           <div className="flex items-center justify-center gap-8 mt-10">
             <div className="text-center">
-              <p className="text-[24px] font-bold text-white">5</p>
+              <p className="text-[24px] font-bold text-white">7</p>
               <p className="text-[11px] text-white/40 font-medium uppercase tracking-wider">Departments</p>
             </div>
             <div className="w-px h-8 bg-white/10"></div>
