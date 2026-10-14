@@ -30,6 +30,26 @@ const Login = ({ onLogin, onSwitchToSignUp }) => {
       // Tokens are set as httpOnly cookies by the backend — JS never sees them.
       const user = response.data?.data ?? response.data;
 
+      // Confirm the browser actually kept the session cookie. A login POST can
+      // return 200 while the cookie is dropped (blocked third-party cookie,
+      // cookies disabled, storage full). Without this check we would render the
+      // dashboard and then silently bounce back to login on the first API call.
+      try {
+        const me = await authApi.me();
+        const verified = me.data?.data ?? me.data;
+        if (!verified) throw new Error('empty session');
+        user.role = user.role || verified.role;
+        user.fullName = user.fullName || verified.fullName;
+      } catch {
+        setIsLoading(false);
+        setError(
+          'Sign-in succeeded but the browser did not keep the session cookie. ' +
+            'Check that cookies are enabled for this site and that the API is ' +
+            'same-origin with the app.'
+        );
+        return;
+      }
+
       // User snapshot only (cached for display; re-validated via /me on load).
       localStorage.setItem('fet_auth', 'true');
       localStorage.setItem('fet_user', JSON.stringify(user));

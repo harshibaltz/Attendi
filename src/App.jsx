@@ -101,8 +101,18 @@ function App() {
         if (u && u.fullName) setUser(u);
       } catch { /* ignore */ }
     };
+    const onSessionExpired = () => {
+      // The axios interceptor refresh could not recover the session. Drop to
+      // the login screen in-place; no reload, no redirect loop.
+      setIsAuthenticated(false);
+      setUser(null);
+    };
     window.addEventListener('fet-profile-updated', onProfileUpdate);
-    return () => window.removeEventListener('fet-profile-updated', onProfileUpdate);
+    window.addEventListener('fet:session-expired', onSessionExpired);
+    return () => {
+      window.removeEventListener('fet-profile-updated', onProfileUpdate);
+      window.removeEventListener('fet:session-expired', onSessionExpired);
+    };
   }, []);
 
   const handleLogin = (userData) => {
