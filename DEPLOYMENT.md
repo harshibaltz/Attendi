@@ -44,7 +44,7 @@ never engages.
 ```json
 {
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://YOUR_BACKEND.vercel.app/api/:path*" },
+    { "source": "/api/:path*", "destination": "https://fet-api.vercel.app/api/:path*" },
     { "source": "/(.*)",       "destination": "/index.html" }
   ]
 }
@@ -53,9 +53,9 @@ never engages.
 > Order matters — Vercel applies the first matching rewrite. The `/api` rule
 > must come before the SPA catch-all, or every API call would return `index.html`.
 
-Replace `YOUR_BACKEND.vercel.app` with the backend project's real hostname, then
-redeploy the **frontend** project. Custom domains work identically: point the
-rewrite at the backend's custom domain if it has one.
+The destination above is already filled in with the live backend hostname
+(confirmed via its `/health/` and `/api/v1/auth/login/` responses). Change it
+only if you rename the backend Vercel project.
 
 `src/lib/api.js` now defaults to a relative base URL (`/api/v1`), so no
 `VITE_API_BASE` is needed in production. Setting it is still supported for a
