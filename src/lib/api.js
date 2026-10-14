@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 /**
- * Same-origin by default.
+ * Same-origin in production, always.
  *
  * `vercel.json` rewrites `/api/*` to the Django backend, so the browser talks
  * to one origin. That matters for Safari: the JWTs live in httpOnly cookies
@@ -9,11 +9,11 @@ import axios from 'axios';
  * iOS Safari (ITP) discards regardless of SameSite/Secure. A same-origin
  * request makes them first-party, so ITP never applies.
  *
- * Leave VITE_API_BASE unset in production. It is only useful for pointing a
- * local dev server at a remote API; the local Vite dev proxy already handles
- * `/api`, so an empty value is correct there too.
+ * VITE_API_BASE is honoured in dev only, so a stale value left in the Vercel
+ * project settings cannot silently reintroduce the cross-site cookie failure
+ * that breaks iOS sign-in. Production builds are same-origin by construction.
  */
-const API_BASE = import.meta.env.VITE_API_BASE || '';
+const API_BASE = import.meta.env.DEV ? import.meta.env.VITE_API_BASE || '' : '';
 
 // JWTs live ONLY in httpOnly cookies (set by the backend). This client never
 // reads or writes tokens from JS-accessible storage, so an XSS cannot steal them.
