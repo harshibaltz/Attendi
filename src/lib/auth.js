@@ -8,5 +8,6 @@ export const authApi = {
   changePassword: (data) => api.post('/auth/change-password/', data),
   selfRegister: (data) => api.post('/auth/self-register/', data),
   requestOtp: (data) => api.post('/auth/forgot-password/request-otp/', data),
+  verifyOtp: (data) => api.post('/auth/reset-password/verify-otp/', data),
   confirmReset: (data) => api.post('/auth/reset-password/confirm/', data),
 };

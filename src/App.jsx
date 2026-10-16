@@ -10,6 +10,7 @@ import CoordinatorDashboard from './components/Dashboard/CoordinatorDashboard';
 import Login from './components/Auth/Login';
 import SignUp from './components/Auth/SignUp';
 import ForgotPassword from './components/Auth/ForgotPassword';
+import OtpVerification from './components/Auth/OtpVerification';
 import ResetPassword from './components/Auth/ResetPassword';
 import ChangePassword from './components/Auth/ChangePassword';
 import ProfilePage from './components/Profile/ProfilePage';
@@ -71,9 +72,10 @@ function App() {
   const [showSignUp, setShowSignUp] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   // Which unauthenticated screen to show. Seeded from the URL so a direct visit
-  // to /reset-password (or /forgot-password) lands on the right screen.
+  // to /forgot-password or /verify-otp lands on the right screen.
   const [authScreen, setAuthScreen] = useState(() => {
     const path = window.location.pathname;
+    if (path.startsWith('/verify-otp')) return 'otp';
     if (path.startsWith('/reset-password')) return 'reset';
     if (path.startsWith('/forgot-password')) return 'forgot';
     return 'login';
@@ -81,6 +83,9 @@ function App() {
   const [resetEmail, setResetEmail] = useState(
     () => new URLSearchParams(window.location.search).get('email') || '',
   );
+  // The verified OTP is kept in memory only (never in the URL) and is consumed
+  // by the final "set a new password" step.
+  const [resetOtp, setResetOtp] = useState('');
 
   useEffect(() => {
     const initAuth = async () => {
@@ -171,18 +176,33 @@ function App() {
   }
 
   if (!isAuthenticated) {
+    if (authScreen === 'otp') {
+      return (
+        <OtpVerification
+          email={resetEmail}
+          onVerified={(code) => {
+            setResetOtp(code);
+            setAuthScreen('reset');
+          }}
+          onBack={() => {
+            setResetOtp('');
+            window.history.replaceState({}, '', '/forgot-password');
+            setAuthScreen('forgot');
+          }}
+        />
+      );
+    }
     if (authScreen === 'reset') {
       return (
         <ResetPassword
           email={resetEmail}
-          onBack={() => {
-            window.history.replaceState({}, '', '/');
-            setAuthScreen('forgot');
-          }}
+          otp={resetOtp}
+          onBack={() => setAuthScreen('otp')}
           onDone={() => {
             // Drop the email from the address bar.
             window.history.replaceState({}, '', '/');
             setResetEmail('');
+            setResetOtp('');
             setAuthScreen('login');
           }}
         />
@@ -194,8 +214,8 @@ function App() {
           onBack={() => setAuthScreen('login')}
           onCodeSent={(email) => {
             setResetEmail(email);
-            window.history.replaceState({}, '', `/reset-password?email=${encodeURIComponent(email)}`);
-            setAuthScreen('reset');
+            window.history.replaceState({}, '', `/verify-otp?email=${encodeURIComponent(email)}`);
+            setAuthScreen('otp');
           }}
         />
       );

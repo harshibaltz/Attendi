@@ -1,38 +1,22 @@
-import React, { useMemo, useState } from 'react';
-import { Eye, EyeOff, ShieldCheck, ArrowLeft, GraduationCap, KeyRound } from 'lucide-react';
+import React, { useState } from 'react';
+import { Eye, EyeOff, ShieldCheck, ArrowLeft, GraduationCap } from 'lucide-react';
 import { authApi } from '../../lib/auth';
 import { errorMessage } from '../../lib/enrollment';
 
-const ResetPassword = ({ email: initialEmail = '', onBack, onDone }) => {
-  const urlEmail = useMemo(
-    () => new URLSearchParams(window.location.search).get('email') || '',
-    [],
-  );
-
-  const [email, setEmail] = useState(initialEmail || urlEmail);
-  const [otp, setOtp] = useState('');
+const ResetPassword = ({ email, otp, onBack, onDone }) => {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isResending, setIsResending] = useState(false);
-  const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [done, setDone] = useState(false);
+
+  const sessionMissing = !email || !otp;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    const value = email.trim().toLowerCase();
-    if (!value) {
-      setError('Please enter your email address.');
-      return;
-    }
-    if (!/^\d{6}$/.test(otp.trim())) {
-      setError('Enter the 6-digit code from your email.');
-      return;
-    }
     if (password.length < 8) {
       setError('Password must be at least 8 characters.');
       return;
@@ -44,34 +28,14 @@ const ResetPassword = ({ email: initialEmail = '', onBack, onDone }) => {
 
     setIsLoading(true);
     try {
-      await authApi.confirmReset({ email: value, otp: otp.trim(), new_password: password });
+      await authApi.confirmReset({ email, otp, new_password: password });
       setDone(true);
       setPassword('');
       setConfirm('');
-      setOtp('');
     } catch (err) {
       setError(errorMessage(err, 'That code is invalid or has expired. Request a new one.'));
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleResend = async () => {
-    setError('');
-    setNotice('');
-    const value = email.trim().toLowerCase();
-    if (!value) {
-      setError('Please enter your email address.');
-      return;
-    }
-    setIsResending(true);
-    try {
-      await authApi.requestOtp({ email: value });
-      setNotice('A new code is on its way. Check your inbox and spam folder.');
-    } catch (err) {
-      setError(errorMessage(err, 'Could not resend the code. Please try again.'));
-    } finally {
-      setIsResending(false);
     }
   };
 
@@ -90,11 +54,17 @@ const ResetPassword = ({ email: initialEmail = '', onBack, onDone }) => {
           </div>
 
           <div className="mb-8">
-            <h2 className="text-[28px] font-bold text-text-primary leading-tight">Enter reset code</h2>
+            <h2 className="text-[28px] font-bold text-text-primary leading-tight">Set a new password</h2>
             <p className="text-[14px] text-text-secondary mt-1.5">
-              Type the 6-digit code we emailed you, then choose a new password.
+              Choose a strong password you have not used before.
             </p>
           </div>
+
+          {sessionMissing && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-[13px] mb-5 font-medium">
+              Your verification has expired. Please request a new code.
+            </div>
+          )}
 
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-[13px] mb-5 font-medium">
@@ -102,51 +72,17 @@ const ResetPassword = ({ email: initialEmail = '', onBack, onDone }) => {
             </div>
           )}
 
-          {notice && (
-            <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-xl text-[13px] mb-5 font-medium">
-              {notice}
-            </div>
-          )}
-
-          {done ? (
+          {done && (
             <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-4 rounded-xl text-[13px] mb-5">
               <div className="flex items-start gap-2">
                 <ShieldCheck size={18} className="mt-0.5 shrink-0" />
                 <p>Your password was reset. You can now sign in with your new password.</p>
               </div>
             </div>
-          ) : (
+          )}
+
+          {!sessionMissing && !done && (
             <form onSubmit={handleSubmit} className="space-y-5">
-              <div>
-                <label htmlFor="email" className="fet-label">University email</label>
-                <input
-                  id="email"
-                  type="email"
-                  placeholder="e.g., name@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="fet-input"
-                  autoComplete="email"
-                  required
-                />
-              </div>
-
-              <div>
-                <label htmlFor="otp" className="fet-label">6-digit code</label>
-                <input
-                  id="otp"
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="000000"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  className="fet-input text-center text-[20px] tracking-[10px] font-bold"
-                  autoComplete="one-time-code"
-                  maxLength={6}
-                  required
-                />
-              </div>
-
               <div>
                 <label htmlFor="new-password" className="fet-label">New password</label>
                 <div className="relative">
@@ -198,16 +134,6 @@ const ResetPassword = ({ email: initialEmail = '', onBack, onDone }) => {
                 ) : (
                   'Reset password'
                 )}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleResend}
-                disabled={isResending}
-                className="flex items-center gap-1.5 mx-auto text-[13px] text-primary font-semibold hover:opacity-80 transition-opacity disabled:opacity-60"
-              >
-                <KeyRound size={14} />
-                {isResending ? 'Sending a new code...' : 'Resend code'}
               </button>
             </form>
           )}
