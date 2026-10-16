@@ -9,6 +9,8 @@ import LecturerDashboard from './components/Dashboard/LecturerDashboard';
 import CoordinatorDashboard from './components/Dashboard/CoordinatorDashboard';
 import Login from './components/Auth/Login';
 import SignUp from './components/Auth/SignUp';
+import ForgotPassword from './components/Auth/ForgotPassword';
+import ResetPassword from './components/Auth/ResetPassword';
 import ChangePassword from './components/Auth/ChangePassword';
 import ProfilePage from './components/Profile/ProfilePage';
 import AttendanceDashboard from './components/Attendance/AttendanceDashboard';
@@ -68,6 +70,17 @@ function App() {
   const [user, setUser] = useState(null);
   const [showSignUp, setShowSignUp] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  // Which unauthenticated screen to show. Seeded from the URL so a direct visit
+  // to /reset-password (or /forgot-password) lands on the right screen.
+  const [authScreen, setAuthScreen] = useState(() => {
+    const path = window.location.pathname;
+    if (path.startsWith('/reset-password')) return 'reset';
+    if (path.startsWith('/forgot-password')) return 'forgot';
+    return 'login';
+  });
+  const [resetEmail, setResetEmail] = useState(
+    () => new URLSearchParams(window.location.search).get('email') || '',
+  );
 
   useEffect(() => {
     const initAuth = async () => {
@@ -158,10 +171,45 @@ function App() {
   }
 
   if (!isAuthenticated) {
+    if (authScreen === 'reset') {
+      return (
+        <ResetPassword
+          email={resetEmail}
+          onBack={() => {
+            window.history.replaceState({}, '', '/');
+            setAuthScreen('forgot');
+          }}
+          onDone={() => {
+            // Drop the email from the address bar.
+            window.history.replaceState({}, '', '/');
+            setResetEmail('');
+            setAuthScreen('login');
+          }}
+        />
+      );
+    }
+    if (authScreen === 'forgot') {
+      return (
+        <ForgotPassword
+          onBack={() => setAuthScreen('login')}
+          onCodeSent={(email) => {
+            setResetEmail(email);
+            window.history.replaceState({}, '', `/reset-password?email=${encodeURIComponent(email)}`);
+            setAuthScreen('reset');
+          }}
+        />
+      );
+    }
     if (showSignUp) {
       return <SignUp onSignUp={handleLogin} onSwitchToLogin={handleSwitchToLogin} />;
     }
-    return <Login onLogin={handleLogin} onSwitchToSignUp={handleSwitchToSignUp} />;
+    return (
+      <Login
+        onLogin={handleLogin}
+        onSwitchToSignUp={handleSwitchToSignUp}
+        onForgotPassword={() => setAuthScreen('forgot')}
+      />
+    );
   }
 
   const userName = user?.fullName || user?.email?.split('@')[0] || 'User';

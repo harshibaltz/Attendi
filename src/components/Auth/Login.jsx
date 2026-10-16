@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { authApi } from '../../lib/auth';
 import { Eye, EyeOff, ArrowRight, GraduationCap } from 'lucide-react';
 
-const Login = ({ onLogin, onSwitchToSignUp }) => {
+const Login = ({ onLogin, onSwitchToSignUp, onForgotPassword }) => {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -149,6 +149,13 @@ const Login = ({ onLogin, onSwitchToSignUp }) => {
                 />
                 Remember me
               </label>
+              <button
+                type="button"
+                onClick={onForgotPassword}
+                className="text-[13px] text-primary font-semibold hover:opacity-80 transition-opacity"
+              >
+                Forgot password?
+              </button>
             </div>
 
             <button 
