@@ -457,23 +457,21 @@ const ProfilePage = () => {
         </div>
       )}
 
-      {isStudent && (
-        <div className="fet-card p-4 md:p-6" style={{ borderColor: 'rgb(var(--bd-line))' }}>
-          <h4 className="text-[15px] font-bold text-danger">Danger zone</h4>
-          <p className="mt-1 text-[13px] text-text-secondary">
-            Deleting your account signs you out on every device and you will no longer be able to
-            sign in. Your academic records stay with the school.
-          </p>
-          <button
-            type="button"
-            onClick={() => { setDeleteError(''); setShowDeleteConfirm(true); }}
-            className="fet-btn-danger mt-3 inline-flex items-center gap-2"
-          >
-            <Trash2 size={15} /> Delete my account
-          </button>
-          {deleteError && <p className="mt-2 text-[13px] text-danger">{deleteError}</p>}
-        </div>
-      )}
+      <div className="fet-card p-4 md:p-6" style={{ borderColor: 'rgb(var(--bd-line))' }}>
+        <h4 className="text-[15px] font-bold text-danger">Danger zone</h4>
+        <p className="mt-1 text-[13px] text-text-secondary">
+          Deleting your account signs you out on every device and you will no longer be able to
+          sign in. Your academic records stay with the school.
+        </p>
+        <button
+          type="button"
+          onClick={() => { setDeleteError(''); setShowDeleteConfirm(true); }}
+          className="fet-btn-danger mt-3 inline-flex items-center gap-2"
+        >
+          <Trash2 size={15} /> Delete my account
+        </button>
+        {deleteError && <p className="mt-2 text-[13px] text-danger">{deleteError}</p>}
+      </div>
 
       {showDeleteConfirm && (
         <div
