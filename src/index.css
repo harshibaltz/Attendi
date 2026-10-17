@@ -332,42 +332,48 @@
 
 /* ============================================================
    FORM CONTROLS
+   Declared in @layer components (Tailwind emits it before the
+   utilities layer) so a utility padding such as pl-10 for a
+   leading icon or pr-11 for a trailing button overrides the
+   base `padding` shorthand instead of sitting under it.
    ============================================================ */
-.fet-input, .ui-input {
-  width: 100%;
-  padding: 9px 12px;
-  border: 1px solid rgb(var(--line-2));
-  border-radius: var(--r-sm);
-  font-size: 13px;
-  color: rgb(var(--ink));
-  background-color: rgb(var(--surface));
-  transition: border-color .13s, box-shadow .13s;
-}
-.fet-input:focus, .ui-input:focus {
-  border-color: rgb(var(--primary));
-  box-shadow: 0 0 0 3px rgb(var(--primary-bg));
-}
-.fet-input::placeholder, .ui-input::placeholder { color: rgb(var(--ink-3)); }
+@layer components {
+  .fet-input, .ui-input {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid rgb(var(--line-2));
+    border-radius: var(--r-sm);
+    font-size: 13px;
+    color: rgb(var(--ink));
+    background-color: rgb(var(--surface));
+    transition: border-color .13s, box-shadow .13s;
+  }
+  .fet-input:focus, .ui-input:focus {
+    border-color: rgb(var(--primary));
+    box-shadow: 0 0 0 3px rgb(var(--primary-bg));
+  }
+  .fet-input::placeholder, .ui-input::placeholder { color: rgb(var(--ink-3)); }
 
-.fet-select, .ui-select {
-  width: 100%;
-  padding: 9px 12px;
-  border: 1px solid rgb(var(--line-2));
-  border-radius: var(--r-sm);
-  font-size: 13px;
-  color: rgb(var(--ink));
-  background-color: rgb(var(--surface));
-  transition: border-color .13s, box-shadow .13s;
-  appearance: auto;
-}
-.fet-select:focus, .ui-select:focus {
-  border-color: rgb(var(--primary));
-  box-shadow: 0 0 0 3px rgb(var(--primary-bg));
-}
+  .fet-select, .ui-select {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid rgb(var(--line-2));
+    border-radius: var(--r-sm);
+    font-size: 13px;
+    color: rgb(var(--ink));
+    background-color: rgb(var(--surface));
+    transition: border-color .13s, box-shadow .13s;
+    appearance: auto;
+  }
+  .fet-select:focus, .ui-select:focus {
+    border-color: rgb(var(--primary));
+    box-shadow: 0 0 0 3px rgb(var(--primary-bg));
+  }
 
-.fet-label {
-  display: block; font-size: 13px; font-weight: 600;
-  color: rgb(var(--ink)); margin-bottom: 6px;
+  .fet-label {
+    display: block; font-size: 13px; font-weight: 600;
+    color: rgb(var(--ink)); margin-bottom: 6px;
+  }
 }
 
 /* ============================================================
@@ -704,7 +710,7 @@
 
   .fet-btn-primary, .fet-btn-secondary, .fet-btn-danger,
   .ui-btn-primary, .ui-btn-secondary, .ui-btn-danger { padding: 11px 15px; }
-  .fet-input, .ui-input, .fet-select, .ui-select { padding: 11px 12px; }
+  .fet-input, .ui-input, .fet-select, .ui-select { padding-top: 11px; padding-bottom: 11px; }
 
   .ui-course-figs { flex-wrap: wrap; }
   .ui-course-fig { min-width: 50%; border-bottom: 1px solid rgb(var(--line)); }
