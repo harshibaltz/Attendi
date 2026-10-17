@@ -124,6 +124,11 @@
    sidebar's Sign out footer behind the bottom bar. */
 .app-container { min-height: 100vh; min-height: 100dvh; height: 100vh; height: 100dvh; }
 
+/* The scrollable content area. min-height/min-width:0 lets it shrink inside
+   the flex shell so it scrolls instead of overflowing, and gives
+   ScrollManager a single element to track. */
+.app-scroll { min-height: 0; min-width: 0; overflow-y: auto; }
+
 /* ============================================================
    SIDEBAR
    ============================================================ */

@@ -2,10 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Edit2, Save, X, Mail, Building, GraduationCap, User as UserIcon, Award, Briefcase,
-  ArrowRight, AlertCircle, RefreshCw,
+  ArrowRight, AlertCircle, RefreshCw, Trash2,
 } from 'lucide-react';
 import { profileApi, normalizeRole } from '../../lib/profile';
 import { projectsApi } from '../../lib/projects';
+import { authApi } from '../../lib/auth';
 import { statusBadge } from '../Projects/projectUi';
 
 const getInitials = (name) => {
@@ -33,6 +34,9 @@ const ProfilePage = () => {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState('');
   const [form, setForm] = useState({});
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const role = normalizeRole(me?.role || localStorage.getItem('fet_user_role'));
   const isStudent = role === 'student';
@@ -113,6 +117,22 @@ const ProfilePage = () => {
       setError(typeof msg === 'string' ? msg : 'Could not save your profile.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await authApi.deleteAccount();
+      // The server clears the JWT cookies and revokes every session. Mirror
+      // that locally and drop the shell back to the login screen.
+      ['fet_auth', 'fet_user', 'fet_user_role', 'fet_user_name', 'access_token']
+        .forEach((key) => localStorage.removeItem(key));
+      window.dispatchEvent(new CustomEvent('fet:session-expired'));
+    } catch (err) {
+      setDeleteError(err.response?.data?.error?.message || 'Could not delete your account.');
+      setDeleting(false);
     }
   };
 
@@ -434,6 +454,59 @@ const ProfilePage = () => {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {isStudent && (
+        <div className="fet-card p-4 md:p-6" style={{ borderColor: 'rgb(var(--bd-line))' }}>
+          <h4 className="text-[15px] font-bold text-danger">Danger zone</h4>
+          <p className="mt-1 text-[13px] text-text-secondary">
+            Deleting your account signs you out on every device and you will no longer be able to
+            sign in. Your academic records stay with the school.
+          </p>
+          <button
+            type="button"
+            onClick={() => { setDeleteError(''); setShowDeleteConfirm(true); }}
+            className="fet-btn-danger mt-3 inline-flex items-center gap-2"
+          >
+            <Trash2 size={15} /> Delete my account
+          </button>
+          {deleteError && <p className="mt-2 text-[13px] text-danger">{deleteError}</p>}
+        </div>
+      )}
+
+      {showDeleteConfirm && (
+        <div
+          className="fixed inset-0 z-[90] grid place-items-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => { if (!deleting) setShowDeleteConfirm(false); }}
+        >
+          <div className="w-full max-w-sm rounded-xl bg-surface p-5 shadow-modal" onClick={(e) => e.stopPropagation()}>
+            <h4 className="text-[15px] font-bold text-text-primary">Delete your account?</h4>
+            <p className="mt-2 text-[13px] text-text-secondary">
+              This signs you out on all devices and blocks future sign-in. This cannot be undone
+              from your side.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+                className="fet-btn-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                disabled={deleting}
+                className="fet-btn-danger"
+              >
+                {deleting ? 'Deleting…' : 'Delete account'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

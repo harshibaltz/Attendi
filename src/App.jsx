@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { ThemeProvider } from './context/ThemeContext';
 import Sidebar from './components/Layout/Sidebar';
 import Header from './components/Layout/Header';
+import ScrollManager from './components/Layout/ScrollManager';
 import DashboardHome from './components/Dashboard/DashboardHome';
 import StudentDashboard from './components/Dashboard/StudentDashboard';
 import LecturerDashboard from './components/Dashboard/LecturerDashboard';
@@ -243,11 +244,12 @@ function App() {
   return (
     <ThemeProvider>
       <Router>
+          <ScrollManager />
           <div className="app-container flex h-screen bg-page-bg">
             <Sidebar onLogout={handleLogout} userName={userName} userRole={userRole} />
             <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
               <Header user={user} onLogout={handleLogout} />
-              <main className="flex-1 overflow-y-auto p-4 md:p-6">
+              <main className="app-scroll flex-1 overflow-y-auto p-4 md:p-6">
                 <Routes>
                   <Route path="/" element={<DashboardHome />} />
                   <Route path="/dashboard" element={<DashboardHome />} />
