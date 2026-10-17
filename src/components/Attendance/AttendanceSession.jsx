@@ -109,7 +109,10 @@ const AttendanceSession = ({ onClose, onCreated }) => {
                 ) : (
                   <select
                     value={formData.offeringId}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, offeringId: e.target.value, scheduleId: '' }))}
+                    onChange={(e) => {
+                      setFormData((prev) => ({ ...prev, offeringId: e.target.value, scheduleId: '' }));
+                      if (error) setError('');
+                    }}
                     className="fet-select"
                   >
                     <option value="">Select Course</option>
@@ -172,14 +175,24 @@ const AttendanceSession = ({ onClose, onCreated }) => {
                 </div>
               </div>
 
-              <button onClick={() => setStep(2)} className="w-full fet-btn-primary">
+              <button
+                onClick={() => {
+                  if (!formData.offeringId) {
+                    setError('Please select a course.');
+                    return;
+                  }
+                  setError('');
+                  setStep(2);
+                }}
+                className="w-full fet-btn-primary"
+              >
                 Continue →
               </button>
             </div>
           )}
 
           {/* Step 2: Options + Launch */}
-          {step === 2 && (
+          {step === 2 && offering && (
             <div className="space-y-4">
               <div className="p-4 bg-page-bg rounded-xl">
                 <p className="font-medium text-text-primary">{offering.course_code} - {offering.course_title}</p>
