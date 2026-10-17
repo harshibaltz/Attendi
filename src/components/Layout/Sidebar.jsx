@@ -189,7 +189,10 @@ const Sidebar = ({ onLogout, userName = 'User', userRole = 'student' }) => {
             ) : null}
           </nav>
 
-          <div className="mt-auto px-[11px] pb-3 pt-2.5 border-t border-white/[.06]">
+          <div
+            className="mt-auto px-[11px] pt-2.5 border-t border-white/[.06]"
+            style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
+          >
             <button
               type="button"
               onClick={() => { close(); onLogout(); }}

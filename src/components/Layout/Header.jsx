@@ -67,7 +67,7 @@ const Header = ({ user, onLogout }) => {
   const menuItem = 'w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] text-text-primary hover:bg-page-bg transition-colors text-left';
 
   return (
-    <header className="flex h-[58px] shrink-0 items-center gap-3 border-b border-border-default bg-surface px-4 md:px-6">
+    <header className="relative z-40 flex h-[58px] shrink-0 items-center gap-3 border-b border-border-default bg-surface px-4 md:px-6">
       <div className="relative hidden md:block max-w-[430px] flex-1">
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
         <input
@@ -158,7 +158,7 @@ const Header = ({ user, onLogout }) => {
           </button>
 
           {showProfile ? (
-            <div className="absolute right-0 top-full mt-2 w-52 overflow-hidden rounded-lg border border-border-default bg-surface shadow-modal">
+            <div className="absolute right-0 top-full z-50 mt-2 w-52 overflow-hidden rounded-lg border border-border-default bg-surface shadow-modal">
               <div className="border-b border-border-default px-4 py-3">
                 <p className="text-[13px] font-semibold text-text-primary">{name}</p>
                 <p className="text-[11px] capitalize text-text-secondary">{role}</p>

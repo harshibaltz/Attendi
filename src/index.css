@@ -118,8 +118,11 @@
 /* ============================================================
    APP SHELL
    ============================================================ */
-#root { min-height: 100vh; background-color: rgb(var(--canvas)); }
-.app-container { min-height: 100vh; }
+#root { min-height: 100vh; min-height: 100dvh; background-color: rgb(var(--canvas)); }
+/* Use the dynamic viewport height where supported: on mobile Safari 100vh
+   is taller than the visible area (the toolbars overlap it), which hid the
+   sidebar's Sign out footer behind the bottom bar. */
+.app-container { min-height: 100vh; min-height: 100dvh; height: 100vh; height: 100dvh; }
 
 /* ============================================================
    SIDEBAR
@@ -127,6 +130,10 @@
 .sidebar {
   background-color: rgb(var(--nav));
   border-right: 1px solid rgba(255, 255, 255, .05);
+  /* Match the visible viewport so the pinned Sign out footer is not hidden
+     under mobile Safari's bottom toolbar. */
+  height: 100vh;
+  height: 100dvh;
 }
 
 .sidebar .nav-item {
