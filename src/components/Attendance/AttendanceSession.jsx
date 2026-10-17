@@ -68,7 +68,7 @@ const AttendanceSession = ({ onClose, onCreated }) => {
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[120] p-4">
-      <div className="fet-card bg-white rounded-2xl shadow-modal max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+      <div className="fet-card bg-surface text-text-primary rounded-2xl shadow-modal max-w-2xl w-full max-h-[85dvh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b border-border-default">
           <h3 className="text-xl font-bold text-text-primary">Start Attendance Session</h3>
           <button onClick={onClose} className="p-1 hover:bg-page-bg rounded-lg">

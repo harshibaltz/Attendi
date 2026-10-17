@@ -857,7 +857,7 @@ const LecturerAttendance = () => {
       {/* View session modal with records + corrections */}
       {selectedSession && !showProjector && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="fet-card bg-white rounded-2xl shadow-modal max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6">
+          <div className="fet-card bg-surface text-text-primary rounded-2xl shadow-modal max-w-4xl w-full max-h-[85dvh] overflow-y-auto p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-text-primary">Session Details</h3>
               <div className="flex items-center gap-2">
