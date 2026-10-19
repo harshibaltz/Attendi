@@ -118,11 +118,16 @@ const AttendanceSession = ({ onClose, onCreated }) => {
                     <option value="">Select Course</option>
                     {courses.map((c) => (
                       <option key={c.offering_id} value={c.offering_id}>
-                        {c.course_code} - {c.course_title} ({c.enrolled_students} enrolled)
+                        {c.course_code} - {c.course_title} ({c.enrolled_students} enrolled){c.semester ? ` · ${c.semester}` : ''}
                       </option>
                     ))}
                   </select>
                 )}
+                {!loadingCourses && courses.length === 0 ? (
+                  <p className="mt-2 text-xs text-text-secondary">
+                    No courses assigned yet. Ask an administrator to assign you a course.
+                  </p>
+                ) : null}
               </div>
 
               {offering && offering.schedules?.length > 0 && (

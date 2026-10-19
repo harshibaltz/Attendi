@@ -229,6 +229,7 @@ const DepartmentPanel = () => {
 const CourseOfferingPanel = () => {
   const [rows, setRows] = useState([]);
   const [lecturers, setLecturers] = useState([]);
+  const [activeSemester, setActiveSemester] = useState(null);
   const [drafts, setDrafts] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -239,11 +240,21 @@ const CourseOfferingPanel = () => {
     setLoading(true);
     setError('');
     try {
-      const [offerings, lecturerRows] = await Promise.all([
+      const [offerings, lecturerRows, semesterRows] = await Promise.all([
         academicsApi.courseOfferings(),
         academicsApi.lecturers(),
+        academicsApi.semesters(),
       ]);
-      const offeringRows = offerings || [];
+      const active = (semesterRows || []).find((semester) => semester.is_active) || null;
+      setActiveSemester(active);
+      // The current term is what admins touch most, so list it first; the
+      // assigned lecturer sees every offering either way.
+      const offeringRows = [...(offerings || [])].sort((a, b) => {
+        const aActive = active && a.semester === active.id ? 0 : 1;
+        const bActive = active && b.semester === active.id ? 0 : 1;
+        if (aActive !== bActive) return aActive - bActive;
+        return (a.course_code || '').localeCompare(b.course_code || '');
+      });
       setRows(offeringRows);
       setLecturers(lecturerRows || []);
       setDrafts(Object.fromEntries(offeringRows.map((row) => [row.id, row.lecturer || ''])));
@@ -264,7 +275,10 @@ const CourseOfferingPanel = () => {
     try {
       await academicsApi.assignLecturer(row.id, lecturerId);
       const lecturer = lecturers.find((item) => item.id === lecturerId);
-      setNotice(`${row.course_code} assigned to ${lecturer?.full_name || 'no lecturer'}.`);
+      setNotice(
+        `${row.course_code} assigned to ${lecturer?.full_name || 'no lecturer'}. ` +
+        (lecturer ? 'The classroom is now on their panel, ready for attendance.' : ''),
+      );
       await load();
     } catch (err) {
       setError(errorMessage(err, `Could not update ${row.course_code}.`));
@@ -286,7 +300,18 @@ const CourseOfferingPanel = () => {
       ),
     },
     { key: 'department_name', label: 'Department' },
-    { key: 'semester_name', label: 'Semester' },
+    {
+      key: 'semester_name',
+      label: 'Semester',
+      render: (row) => (
+        <div className="flex min-w-[150px] items-center gap-2">
+          <span>{row.semester_name || '—'}</span>
+          {!activeSemester ? null : row.semester === activeSemester.id
+            ? <Pill tone="ok" dot>Active</Pill>
+            : <Pill tone="wn">Not active</Pill>}
+        </div>
+      ),
+    },
     {
       key: 'lecturer',
       label: 'Teaching lecturer',
@@ -294,28 +319,30 @@ const CourseOfferingPanel = () => {
         const draft = drafts[row.id] ?? row.lecturer ?? '';
         const changed = draft !== (row.lecturer || '');
         return (
-          <div className="flex min-w-[260px] items-center gap-2">
-            <select
-              aria-label={`Lecturer for ${row.course_code}`}
-              className="fet-input min-w-0 flex-1"
-              value={draft}
-              onChange={(event) => setDrafts((current) => ({ ...current, [row.id]: event.target.value }))}
-            >
-              <option value="">Unassigned</option>
-              {lecturers.map((lecturer) => (
-                <option key={lecturer.id} value={lecturer.id}>
-                  {lecturer.full_name} · {lecturer.email}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              className="fet-btn-secondary shrink-0"
-              onClick={() => save(row)}
-              disabled={!changed || busyId === row.id}
-            >
-              {busyId === row.id ? 'Saving...' : 'Save'}
-            </button>
+          <div className="flex min-w-[260px] flex-col gap-1">
+            <div className="flex items-center gap-2">
+              <select
+                aria-label={`Lecturer for ${row.course_code}`}
+                className="fet-input min-w-0 flex-1"
+                value={draft}
+                onChange={(event) => setDrafts((current) => ({ ...current, [row.id]: event.target.value }))}
+              >
+                <option value="">Unassigned</option>
+                {lecturers.map((lecturer) => (
+                  <option key={lecturer.id} value={lecturer.id}>
+                    {lecturer.full_name} · {lecturer.email}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="fet-btn-secondary shrink-0"
+                onClick={() => save(row)}
+                disabled={!changed || busyId === row.id}
+              >
+                {busyId === row.id ? 'Saving...' : 'Save'}
+              </button>
+            </div>
           </div>
         );
       },
@@ -326,8 +353,17 @@ const CourseOfferingPanel = () => {
     <div className="space-y-4">
       {error ? <Callout tone="bad">{error}</Callout> : null}
       {notice ? <Callout tone="ok">{notice}</Callout> : null}
+      {!loading && !activeSemester ? (
+        <Callout tone="wn">
+          No semester is active. You can still assign lecturers, but students cannot
+          register and lecturers cannot open new classrooms until one is active on the{' '}
+          <b>Semesters</b> tab.
+        </Callout>
+      ) : null}
       <Callout tone="in" icon={UserCheck}>
-        Assign each course offering to its actual teaching lecturer. Lecturers see and manage only offerings assigned to their account.
+        Assign each course offering to its actual teaching lecturer. The lecturer
+        immediately gets that classroom on their panel and can take attendance for it.
+        Active-semester offerings are listed first.
         {unassigned > 0 ? <span className="block mt-1">{unassigned} offering{unassigned === 1 ? '' : 's'} currently unassigned.</span> : null}
       </Callout>
       <Card accent="hub">
