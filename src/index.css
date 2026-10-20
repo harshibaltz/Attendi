@@ -664,6 +664,27 @@
 }
 .fet-welcome-banner > * { position: relative; z-index: 1; }
 
+/* Light typography for dark surfaces.
+   The base layer sets `h1..h6 { color: var(--ink) }`, which is near-invisible
+   on the dark blue banner gradient because a base-layer element selector beats
+   the inherited `color:#fff` on the banner. These unlayered descendant rules
+   win over the layered base rule regardless of specificity, so headings inside
+   a dark banner always render white. */
+.fet-welcome-banner h1,
+.fet-welcome-banner h2,
+.fet-welcome-banner h3,
+.fet-welcome-banner h4,
+.fet-welcome-banner h5,
+.fet-welcome-banner h6,
+.ui-hero-wash h1,
+.ui-hero-wash h2,
+.ui-hero-wash h3,
+.ui-hero-wash h4,
+.ui-hero-wash h5,
+.ui-hero-wash h6 {
+  color: #fff;
+}
+
 /* ============================================================
    ANNOUNCEMENTS
    ============================================================ */

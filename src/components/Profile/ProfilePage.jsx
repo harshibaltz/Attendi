@@ -189,12 +189,12 @@ const ProfilePage = () => {
             </div>
             <div className="text-center sm:text-left flex-1">
               <h3 className="text-lg md:text-xl font-bold">{me.full_name || me.email}</h3>
-              <p className="text-[#8683BA] text-sm capitalize">{roleLabel(role)}</p>
+              <p className="text-white/70 text-sm capitalize">{roleLabel(role)}</p>
               {isStudent && sp.department && (
-                <p className="text-[#8683BA] text-xs">{sp.department.name} • Level {sp.level || '—'}</p>
+                <p className="text-white/70 text-xs">{sp.department.name} • Level {sp.level || '—'}</p>
               )}
               {isLecturer && lp.department && (
-                <p className="text-[#8683BA] text-xs">{lp.department.name} {lp.title ? `• ${lp.title}` : ''}</p>
+                <p className="text-white/70 text-xs">{lp.department.name} {lp.title ? `• ${lp.title}` : ''}</p>
               )}
             </div>
           </div>

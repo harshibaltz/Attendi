@@ -178,8 +178,8 @@ const StudentAttendance = ({ user }) => {
     <div className="space-y-6">
       <div className="fet-welcome-banner">
         <h2 className="text-2xl font-bold">Attendance</h2>
-        <p className="text-[#8683BA] mt-1">Mark your attendance</p>
-        <p className="text-[#8683BA] text-xs mt-1">Scan the QR code displayed by your lecturer</p>
+        <p className="text-white/70 mt-1">Mark your attendance</p>
+        <p className="text-white/70 text-xs mt-1">Scan the QR code displayed by your lecturer</p>
       </div>
 
       {error && (
