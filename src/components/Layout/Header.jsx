@@ -1,23 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search, Bell, ChevronDown, User, LogOut, Settings, CheckCheck, Moon, Sun,
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { normalizeRole } from '../../lib/profile';
+import { notificationsApi } from '../../lib/notifications';
+import { relativeTime } from '../../lib/format';
 
-const loadNotifications = () => {
-  try {
-    const stored = JSON.parse(localStorage.getItem('fet_notifications') || '[]');
-    if (stored.length > 0) return stored;
-  } catch (e) { /* ignore */ }
-  const initial = [
-    { id: 1, title: 'New announcement posted', time: '2 min ago', read: false, category: 'Announcement' },
-    { id: 2, title: 'Task assigned to you', time: '1 hour ago', read: false, category: 'Task' },
-    { id: 3, title: 'Assessment results released', time: '3 hours ago', read: true, category: 'Assessment' },
-  ];
-  localStorage.setItem('fet_notifications', JSON.stringify(initial));
-  return initial;
+const TYPE_TONE = {
+  ATTENDANCE: 'Attendance',
+  ASSESSMENT: 'Assessment',
+  GRADE: 'Grade',
+  ANNOUNCEMENT: 'Announcement',
+  ENROLLMENT: 'Enrollment',
+  CARRY_OVER: 'Carry-over',
 };
 
 const Header = ({ user, onLogout }) => {
@@ -25,13 +22,28 @@ const Header = ({ user, onLogout }) => {
   const { theme, toggleTheme } = useTheme();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
-  const [notifications, setNotifications] = useState(loadNotifications);
+  const [notifications, setNotifications] = useState([]);
   const notifRef = useRef(null);
   const profileRef = useRef(null);
 
+  // The bell reads the real, unread-only feed. That keeps it honest with the
+  // sidebar badge and the Notifications page, which share the same endpoint.
+  const loadNotifications = useCallback(async () => {
+    try {
+      const list = await notificationsApi.list(true);
+      setNotifications(Array.isArray(list) ? list : []);
+    } catch {
+      /* a failed fetch must not break the header */
+    }
+  }, []);
+
+  useEffect(() => { loadNotifications(); }, [loadNotifications]);
+
   useEffect(() => {
-    localStorage.setItem('fet_notifications', JSON.stringify(notifications));
-  }, [notifications]);
+    const onChanged = () => loadNotifications();
+    window.addEventListener('fet-notifications-changed', onChanged);
+    return () => window.removeEventListener('fet-notifications-changed', onChanged);
+  }, [loadNotifications]);
 
   useEffect(() => {
     const handleClick = (e) => {
@@ -45,13 +57,27 @@ const Header = ({ user, onLogout }) => {
   const name = user?.fullName || 'User';
   const role = normalizeRole(user?.role || 'student');
   const initials = name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const unreadCount = notifications.length;
 
-  const markAsRead = (id) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+  // Any read action drops the row from this unread-only list and tells the
+  // sidebar to refresh its badge.
+  const markAsRead = async (id) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    try {
+      await notificationsApi.markRead(id);
+      window.dispatchEvent(new Event('fet-notifications-changed'));
+    } catch {
+      loadNotifications();
+    }
   };
-  const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  const markAllAsRead = async () => {
+    setNotifications([]);
+    try {
+      await notificationsApi.markAllRead();
+      window.dispatchEvent(new Event('fet-notifications-changed'));
+    } catch {
+      loadNotifications();
+    }
   };
 
   const handleLogout = () => {
@@ -63,7 +89,7 @@ const Header = ({ user, onLogout }) => {
     else window.location.reload();
   };
 
-  const panel = 'absolute right-0 top-full mt-2 w-80 bg-surface rounded-lg shadow-modal border border-border-default z-50 overflow-hidden';
+  const panel = 'absolute right-0 top-full mt-2 w-[calc(100vw-2rem)] sm:w-80 bg-surface rounded-lg shadow-modal border border-border-default z-50 overflow-hidden';
   const menuItem = 'w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] text-text-primary hover:bg-page-bg transition-colors text-left';
 
   return (
@@ -105,42 +131,71 @@ const Header = ({ user, onLogout }) => {
             type="button"
             onClick={() => { setShowNotifications((v) => !v); setShowProfile(false); }}
             className="relative grid h-9 w-9 place-items-center rounded-md border border-border-default bg-surface text-text-secondary transition-colors hover:bg-page-bg"
-            aria-label="Notifications"
+            aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
           >
             <Bell size={16} />
             {unreadCount > 0 ? (
-              <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-danger ring-2 ring-surface" />
+              <span className="absolute -right-1 -top-1 grid h-[17px] min-w-[17px] place-items-center rounded-full bg-danger px-[4px] text-[10px] font-semibold leading-none text-white ring-2 ring-surface">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
             ) : null}
           </button>
 
           {showNotifications ? (
             <div className={panel}>
               <div className="flex items-center justify-between border-b border-border-default px-4 py-3">
-                <p className="text-[13px] font-semibold text-text-primary">Notifications</p>
-                <button
-                  type="button"
-                  onClick={markAllAsRead}
-                  className="flex items-center gap-1 text-[12px] font-medium text-primary hover:opacity-80"
-                >
-                  <CheckCheck size={14} /> Mark all read
-                </button>
+                <p className="text-[13px] font-semibold text-text-primary">
+                  Notifications
+                  {unreadCount > 0 ? <span className="ml-1.5 text-text-secondary">({unreadCount})</span> : null}
+                </p>
+                {unreadCount > 0 ? (
+                  <button
+                    type="button"
+                    onClick={markAllAsRead}
+                    className="flex items-center gap-1 text-[12px] font-medium text-primary hover:opacity-80"
+                  >
+                    <CheckCheck size={14} /> Mark all read
+                  </button>
+                ) : null}
               </div>
               <div className="max-h-72 overflow-y-auto">
                 {notifications.length === 0 ? (
-                  <p className="py-8 text-center text-[13px] text-text-secondary">No notifications</p>
+                  <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
+                    <Bell size={22} className="text-text-muted" />
+                    <p className="text-[13px] font-medium text-text-primary">No unread notifications</p>
+                    <button
+                      type="button"
+                      onClick={() => { setShowNotifications(false); navigate('/notifications'); }}
+                      className="text-[12px] font-medium text-primary hover:underline"
+                    >
+                      View notification history
+                    </button>
+                  </div>
                 ) : notifications.map((n) => (
                   <button
                     key={n.id}
                     type="button"
                     onClick={() => markAsRead(n.id)}
-                    className={`w-full border-b border-border-default/50 px-4 py-3 text-left transition-colors last:border-0 hover:bg-page-bg ${n.read ? '' : 'bg-primary-light/40'}`}
+                    className="w-full border-b border-border-default/50 bg-primary-light/40 px-4 py-3 text-left transition-colors last:border-0 hover:bg-page-bg"
                   >
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-primary">{n.category}</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-primary">
+                      {TYPE_TONE[n.type] || n.type || 'Notice'}
+                    </span>
                     <p className="mt-0.5 text-[13px] font-medium text-text-primary">{n.title}</p>
-                    <p className="mt-0.5 text-[11px] text-text-secondary">{n.time}</p>
+                    {n.message ? (
+                      <p className="mt-0.5 line-clamp-2 text-[12px] text-text-secondary">{n.message}</p>
+                    ) : null}
+                    <p className="mt-0.5 text-[11px] text-text-secondary">{relativeTime(n.created_at)}</p>
                   </button>
                 ))}
               </div>
+              <button
+                type="button"
+                onClick={() => { setShowNotifications(false); navigate('/notifications'); }}
+                className="w-full border-t border-border-default px-4 py-2.5 text-center text-[12px] font-medium text-primary transition-colors hover:bg-page-bg"
+              >
+                View all notifications
+              </button>
             </div>
           ) : null}
         </div>
