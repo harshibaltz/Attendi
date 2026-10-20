@@ -301,6 +301,7 @@ function App() {
                 <Route path="/groups" element={<Navigate to="/projects" replace />} />
                 <Route path="/contribution" element={<Navigate to="/projects" replace />} />
                 <Route path="/courses" element={<Navigate to="/lessons" replace />} />
+                <Route path="/classrooms" element={<Navigate to="/lessons" replace />} />
                 <Route
                   path="/admin/users"
                   element={<RequireRole role="admin"><AdminUsers user={user} /></RequireRole>}

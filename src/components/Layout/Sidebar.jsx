@@ -169,7 +169,12 @@ const Sidebar = ({ onLogout, userName = 'User', userRole = 'student' }) => {
               className="nav-item w-full"
               aria-expanded={moreOpen}
             >
-              <span className="nav-tile"><ChevronRight size={14} className="text-white/60" /></span>
+              <span className="nav-tile">
+                <ChevronRight
+                  size={14}
+                  className={`text-white/60 transition-transform duration-200 ${moreOpen ? 'rotate-90' : ''}`}
+                />
+              </span>
               <span>Other screens</span>
               <span className="ml-auto text-[11px] text-white/40 num">{moreItems.length}</span>
             </button>
