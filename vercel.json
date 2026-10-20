@@ -6,10 +6,9 @@
       "destination": "https://fet-api.vercel.app/api/$1"
     },
     {
-      "source": "/assets/(.*)",
-      "destination": "/assets/__missing__"
-    },
-    { "source": "/(.*)", "destination": "/index.html" }
+      "source": "/((?!assets/).*)",
+      "destination": "/index.html"
+    }
   ],
   "headers": [
     {
