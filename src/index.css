@@ -421,6 +421,42 @@
 }
 
 /* ============================================================
+   INFO TOOLTIP
+   Small "(i)" affordance next to a term, opened on hover and on
+   click/tap/focus. The bubble is position:fixed so it is never
+   clipped by a card's overflow, and flips below when asked.
+   ============================================================ */
+.ui-infotip-wrap { position: relative; display: inline-flex; vertical-align: middle; }
+.ui-infotip-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%;
+  color: rgb(var(--ink-3)); background: transparent; border: 0;
+  cursor: help; padding: 0;
+  transition: color .15s ease, background-color .15s ease;
+}
+.ui-infotip-btn:hover,
+.ui-infotip-btn:focus-visible { color: rgb(var(--primary)); background: rgb(var(--primary-bg)); }
+.ui-infotip-btn:focus-visible { outline: 2px solid rgb(var(--primary)); outline-offset: 1px; }
+.ui-infotip {
+  position: fixed; z-index: 60;
+  transform: translateX(-50%);
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  background: rgb(var(--nav-2));
+  color: #fff;
+  font-size: 11.5px; font-weight: 450; line-height: 1.45; text-align: left;
+  box-shadow: var(--sh-pop);
+  pointer-events: none;
+  box-sizing: border-box;
+}
+.ui-infotip::after {
+  content: ''; position: absolute; left: 50%; transform: translateX(-50%);
+  border: 5px solid transparent;
+}
+.ui-infotip[data-placement='top']::after { top: 100%; border-top-color: rgb(var(--nav-2)); }
+.ui-infotip[data-placement='bottom']::after { bottom: 100%; border-bottom-color: rgb(var(--nav-2)); }
+
+/* ============================================================
    PILL, TAG, BADGE
    ============================================================ */
 .ui-pill {
@@ -735,6 +771,36 @@
   border-color: rgb(var(--primary-line));
   background: rgb(var(--surface-2));
 }
+
+/* Swipe-to-delete shell. The card content slides left over a revealed
+   destructive action. The .ui-ann keeps its own styling; this only adds
+   the track + reveal underneath it. */
+.ui-swipe {
+  position: relative;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  touch-action: pan-y;
+}
+.ui-swipe-track {
+  position: relative;
+  z-index: 1;
+  transition: transform .22s ease;
+  will-change: transform;
+}
+.ui-swipe-track.is-dragging { transition: none; }
+.ui-swipe-delete {
+  position: absolute; inset: 0 0 0 auto;
+  width: 96px;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  flex-direction: column;
+  background: rgb(var(--bd));
+  color: #fff; border: 0;
+  font-size: 11.5px; font-weight: 600;
+  cursor: pointer;
+}
+.ui-swipe-delete:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+.ui-swipe:not(:hover) .ui-swipe-delete { } /* keep action tappable; state driven by transform */
+
 .ui-ann-top { display: flex; gap: 13px; padding: 16px 18px 0; }
 .ui-ann-title { font-size: 15.5px; font-weight: 600; letter-spacing: -.012em; line-height: 1.35; }
 .ui-ann-body { font-size: 13.5px; line-height: 1.68; color: rgb(var(--ink-2)); margin: 7px 0 0 47px; max-width: 74ch; }

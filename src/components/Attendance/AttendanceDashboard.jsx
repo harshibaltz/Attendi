@@ -12,6 +12,7 @@ import QRCodeDisplay from './QRCode';
 import {
   SectionHeader, Card, CardHead, CardBody, CardFoot, Eyebrow, Pill, Tag, Callout, EmptyState,
 } from '../UI';
+import InfoTip from '../UI/InfoTip';
 
 /** The searchable roster used when picking students to act as QR stations. */
 const StationPickerBody = ({ roster, picked, onToggle, onSave, saving }) => {
@@ -213,7 +214,13 @@ const StudentAttendance = ({ user }) => {
               <Award size={24} className="text-primary" />
               <div>
                 <p className="text-2xl font-bold text-text-primary">{points.total_points}</p>
-                <p className="text-xs text-text-secondary">Total points</p>
+                <p className="flex items-center gap-1.5 text-xs text-text-secondary">
+                  Total points
+                  <InfoTip
+                    label="What Total points means"
+                    text="Points earned from consistent lecture attendance and active participation."
+                  />
+                </p>
               </div>
             </div>
           </div>
@@ -224,7 +231,13 @@ const StudentAttendance = ({ user }) => {
                 <p className="text-sm font-semibold text-text-primary">
                   {points.is_special_day ? `x${points.special_day_multiplier} (birthday!)` : 'x1'}
                 </p>
-                <p className="text-xs text-text-secondary">Multiplier today</p>
+                <p className="flex items-center gap-1.5 text-xs text-text-secondary">
+                  Multiplier today
+                  <InfoTip
+                    label="What Multiplier today means"
+                    text="Bonus multiplier applied to attendance points earned for today's sessions based on streak/on-time attendance."
+                  />
+                </p>
               </div>
             </div>
           </div>
@@ -233,7 +246,13 @@ const StudentAttendance = ({ user }) => {
               <Calendar size={24} className="text-primary" />
               <div>
                 <p className="text-sm font-semibold text-text-primary">{history.length}</p>
-                <p className="text-xs text-text-secondary">Sessions attended</p>
+                <p className="flex items-center gap-1.5 text-xs text-text-secondary">
+                  Sessions attended
+                  <InfoTip
+                    label="What Sessions attended means"
+                    text="Total number of valid check-ins recorded across all enrolled courses."
+                  />
+                </p>
               </div>
             </div>
           </div>
