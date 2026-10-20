@@ -29,6 +29,7 @@ import NotificationList from './components/Notifications/NotificationList';
 import RosterUpload from './components/Admin/RosterUpload';
 import RegistrationPage from './Pages/Courses/RegistrationPage';
 import AdminDashboard from './Pages/Admin/AdminDashboard';
+import AdminUsers from './Pages/Admin/Users';
 import MobileSimulator from './components/Mobile/MobileSimulator';
 import MyCourses from './Pages/Lessons/MyCourses';
 import CourseDetail from './Pages/Lessons/CourseDetail';
@@ -300,7 +301,10 @@ function App() {
                 <Route path="/groups" element={<Navigate to="/projects" replace />} />
                 <Route path="/contribution" element={<Navigate to="/projects" replace />} />
                 <Route path="/courses" element={<Navigate to="/lessons" replace />} />
-                <Route path="/admin/users" element={<Navigate to="/admin/roster" replace />} />
+                <Route
+                  path="/admin/users"
+                  element={<RequireRole role="admin"><AdminUsers user={user} /></RequireRole>}
+                />
                 <Route
                   path="*"
                   element={mustChangePassword

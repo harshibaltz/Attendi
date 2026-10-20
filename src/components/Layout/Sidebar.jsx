@@ -4,7 +4,7 @@ import {
   LayoutDashboard, BookOpen, ClipboardCheck, FolderKanban, Megaphone,
   UserCircle, Settings, LogOut, Menu, BarChart3,
   CalendarDays, ChevronRight, Bell, BookPlus, CalendarClock, FilePlus2,
-  Upload, Building2, KeyRound,
+  Upload, Building2, KeyRound, Users,
 } from 'lucide-react';
 import { normalizeRole } from '../../lib/profile';
 import { notificationsApi } from '../../lib/notifications';
@@ -41,6 +41,7 @@ const MORE = [
 const ADMIN_ONLY = [
   { path: '/admin/dashboard', icon: LayoutDashboard, label: 'Admin dashboard', area: 'hub' },
   { path: '/admin/roster', icon: Upload, label: 'Roster upload', area: 'hub' },
+  { path: '/admin/users', icon: Users, label: 'Users', area: 'hub' },
   { path: '/admin/academic', icon: Building2, label: 'Academic setup', area: 'hub' },
 ];
 
