@@ -1,9 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { QrCode, X, CheckCircle, AlertCircle, Camera, Keyboard } from 'lucide-react';
+import { QrCode, X, CheckCircle, AlertCircle, Camera, Keyboard, Loader2 } from 'lucide-react';
 import jsQR from 'jsqr';
 import api from '../../lib/api';
 
 const BarcodeDetectorApi = typeof window !== 'undefined' ? (window.BarcodeDetector || null) : null;
+
+// How long to wait for the OS permission handshake / camera hardware before
+// giving up. getUserMedia can hang indefinitely if a device or another app is
+// holding the camera, which would otherwise leave the UI stuck on "Starting…".
+const CAMERA_TIMEOUT_MS = 12000;
 
 const getCameraSupport = () => {
   if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
@@ -12,12 +17,25 @@ const getCameraSupport = () => {
   return { ok: true };
 };
 
+const getUserMediaWithTimeout = (constraints, timeoutMs) => {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(Object.assign(new Error('Camera did not respond in time.'), { name: 'TimeoutError' }));
+    }, timeoutMs);
+    navigator.mediaDevices
+      .getUserMedia(constraints)
+      .then((stream) => { clearTimeout(timer); resolve(stream); })
+      .catch((err) => { clearTimeout(timer); reject(err); });
+  });
+};
+
 const QRScanner = ({ onClose, onScan }) => {
   const [scanning, setScanning] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [manualCode, setManualCode] = useState('');
   const [cameraOn, setCameraOn] = useState(false);
+  const [cameraStarting, setCameraStarting] = useState(false);
   const [cameraError, setCameraError] = useState('');
   const [cameraNotice, setCameraNotice] = useState('');
   const videoRef = useRef(null);
@@ -25,6 +43,7 @@ const QRScanner = ({ onClose, onScan }) => {
   const rafRef = useRef(null);
   const scanningRef = useRef(false);
   const canvasRef = useRef(null);
+  const unmountedRef = useRef(false);
 
   const stopCamera = () => {
     scanningRef.current = false;
@@ -33,14 +52,24 @@ const QRScanner = ({ onClose, onScan }) => {
       rafRef.current = null;
     }
     if (streamRef.current) {
+      // Explicitly stop every track to release the OS camera hardware;
+      // otherwise the device stays locked and the next start hangs.
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.onloadedmetadata = null;
+      videoRef.current.srcObject = null;
     }
     setCameraOn(false);
   };
 
   useEffect(() => {
-    return () => stopCamera();
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
+      stopCamera();
+    };
   }, []);
 
   const extractToken = (raw) => {
@@ -149,33 +178,48 @@ const QRScanner = ({ onClose, onScan }) => {
       setCameraNotice('Using built-in scanner for this browser.');
     }
 
-    // Prefer the rear camera; fall back to any camera when a device rejects
-    // the facingMode constraint (some desktops / older browsers).
+    // Modest resolution keeps decode latency and CPU load low on phones and
+    // laptops; 1280x720 is more than enough for a QR code. Prefer the rear
+    // camera, then fall back to any camera when a device rejects the
+    // facingMode constraint (some desktops / older browsers).
     const attempts = [
-      { video: { facingMode: { ideal: 'environment' } } },
+      { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
       { video: { facingMode: 'environment' } },
       { video: true },
     ];
 
+    setCameraStarting(true);
     let stream = null;
     let lastErr = null;
     for (const constraints of attempts) {
       try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        stream = await getUserMediaWithTimeout(constraints, CAMERA_TIMEOUT_MS);
         break;
       } catch (err) {
         lastErr = err;
-        // Permission denied / no camera: retrying other constraints won't help.
-        if (err?.name === 'NotAllowedError' || err?.name === 'SecurityError') break;
+        // Hard stops: another constraint attempt cannot fix these.
+        if (['NotAllowedError', 'SecurityError', 'NotFoundError', 'NotReadableError', 'TimeoutError'].includes(err?.name)) {
+          break;
+        }
       }
     }
+    if (unmountedRef.current) {
+      // Component closed while waiting for the camera: release immediately.
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      return;
+    }
+    setCameraStarting(false);
 
     if (!stream) {
       const name = lastErr?.name;
       if (name === 'NotAllowedError' || name === 'SecurityError') {
-        setCameraError('Camera permission was denied. Allow camera access in your browser settings, or use the code entry below.');
+        setCameraError('Camera permission was denied. Allow camera access for this site in your browser settings, then try again — or use the code entry below.');
+      } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+        setCameraError('Your camera is already in use by another app or browser tab. Close it and try again — or use the code entry below.');
       } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
         setCameraError('No usable camera was found on this device. Use the code entry below.');
+      } else if (name === 'TimeoutError') {
+        setCameraError('The camera is taking too long to start. Make sure no other app is using it, then try again — or use the code entry below.');
       } else {
         setCameraError('Could not access the camera: ' + (lastErr?.message || 'unknown error') + '. Use the code entry below.');
       }
@@ -197,10 +241,11 @@ const QRScanner = ({ onClose, onScan }) => {
         // iOS occasionally rejects play() until the stream paints; the
         // metadata event below retries.
       }
+      if (unmountedRef.current) return;
       if (video.readyState >= 2) {
         scanLoop(video);
       } else {
-        video.onloadedmetadata = () => scanLoop(video);
+        video.onloadedmetadata = () => { if (!unmountedRef.current) scanLoop(video); };
       }
     }
   };
@@ -257,6 +302,14 @@ const QRScanner = ({ onClose, onScan }) => {
                     <AlertCircle size={40} className="mx-auto text-warning mb-2" />
                     <p className="text-sm text-text-secondary">{cameraError}</p>
                   </div>
+                ) : cameraStarting ? (
+                  <div>
+                    <Loader2 size={64} className="mx-auto text-primary animate-spin" />
+                    <p className="text-text-secondary mt-2">Starting camera…</p>
+                    <p className="text-xs text-text-secondary mt-1">
+                      If prompted, allow camera access for this site.
+                    </p>
+                  </div>
                 ) : (
                   <div>
                     <QrCode size={64} className="mx-auto text-primary" />
@@ -268,11 +321,11 @@ const QRScanner = ({ onClose, onScan }) => {
                 )}
                 <button
                   onClick={startCamera}
-                  disabled={scanning}
-                  className="mt-4 fet-btn-primary flex items-center gap-2 mx-auto"
+                  disabled={scanning || cameraStarting}
+                  className="mt-4 fet-btn-primary flex items-center gap-2 mx-auto disabled:opacity-60"
                 >
-                  <Camera size={18} />
-                  Start Camera
+                  {cameraStarting ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}
+                  {cameraStarting ? 'Starting…' : 'Start Camera'}
                 </button>
               </div>
             )}
