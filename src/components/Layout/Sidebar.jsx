@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, BookOpen, ClipboardCheck, FolderKanban, Megaphone,
-  UserCircle, Settings, LogOut, Menu, X, BarChart3,
+  UserCircle, Settings, LogOut, Menu, BarChart3,
   CalendarDays, ChevronRight, Bell, BookPlus, CalendarClock, FilePlus2,
   Upload, Building2, KeyRound,
 } from 'lucide-react';
@@ -90,9 +90,10 @@ const Sidebar = ({ onLogout, userName = 'User', userRole = 'student' }) => {
     <>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => setOpen((o) => !o)}
         className="fet-mobile-only fixed left-4 top-3 z-[70] grid h-10 w-10 place-items-center rounded-md border border-border-default bg-surface shadow-card"
-        aria-label="Open navigation"
+        aria-label="Toggle navigation"
+        aria-expanded={open}
       >
         <Menu size={19} className="text-text-secondary" />
       </button>
@@ -113,7 +114,9 @@ const Sidebar = ({ onLogout, userName = 'User', userRole = 'student' }) => {
         ].join(' ')}
       >
         <div className="flex flex-col h-full">
-          <div className="flex items-center gap-[11px] px-[18px] pt-[18px] pb-4">
+          {/* pl-14 keeps the logo clear of the fixed hamburger, which sits on
+              top of the drawer (z-70 > z-68) and is now the open/close toggle. */}
+          <div className="flex items-center gap-[11px] pl-14 pr-[18px] pt-[18px] pb-4 lg:pl-[18px]">
             <div className="grid h-[34px] w-[34px] place-items-center rounded-[9px] bg-primary text-[11.5px] font-bold tracking-[.04em]">
               FET
             </div>
@@ -121,14 +124,6 @@ const Sidebar = ({ onLogout, userName = 'User', userRole = 'student' }) => {
               <div className="text-[14.5px] font-semibold leading-tight tracking-[-.01em]">FET Platform</div>
               <div className="text-[10.5px] text-white/40 leading-tight">Engineering Management</div>
             </div>
-            <button
-              type="button"
-              onClick={close}
-              className="fet-mobile-only ml-auto grid h-9 w-9 place-items-center rounded-md text-white/60 hover:bg-white/10"
-              aria-label="Close navigation"
-            >
-              <X size={18} />
-            </button>
           </div>
 
           <div className="mx-3 mb-3 flex items-center gap-2.5 rounded-md border border-white/5 bg-white/5 px-2.5 py-2.5">
