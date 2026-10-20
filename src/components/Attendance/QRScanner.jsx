@@ -36,6 +36,7 @@ const QRScanner = ({ onClose, onScan }) => {
   const [manualCode, setManualCode] = useState('');
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraStarting, setCameraStarting] = useState(false);
+  const [frameReady, setFrameReady] = useState(false);
   const [cameraError, setCameraError] = useState('');
   const [cameraNotice, setCameraNotice] = useState('');
   const videoRef = useRef(null);
@@ -61,6 +62,7 @@ const QRScanner = ({ onClose, onScan }) => {
       videoRef.current.onloadedmetadata = null;
       videoRef.current.srcObject = null;
     }
+    setFrameReady(false);
     setCameraOn(false);
   };
 
@@ -71,6 +73,59 @@ const QRScanner = ({ onClose, onScan }) => {
       stopCamera();
     };
   }, []);
+
+  // Attach the stream only AFTER React has committed the <video> to the DOM.
+  // Previously the stream was wired up in the same tick as setCameraOn(true),
+  // when videoRef.current was still null, so srcObject was never set and the
+  // preview stayed black. Keying this effect on cameraOn guarantees the element
+  // exists and appears as soon as the first frame paints.
+  useEffect(() => {
+    if (!cameraOn) return;
+    const video = videoRef.current;
+    const stream = streamRef.current;
+    if (!video || !stream) return;
+
+    video.setAttribute('playsinline', 'true');
+    video.setAttribute('webkit-playsinline', 'true');
+    video.muted = true;
+    video.srcObject = stream;
+
+    let cancelled = false;
+    let begun = false;
+    const begin = () => {
+      if (cancelled || begun || unmountedRef.current || !streamRef.current) return;
+      begun = true;
+      // play() resolves once playback has actually started; only then is there
+      // a frame to decode, so the scan loop never spins on a black frame.
+      video.play().then(() => {
+        if (cancelled || unmountedRef.current || !streamRef.current) return;
+        setFrameReady(true);
+        scanLoop(video);
+      }).catch(() => {
+        // Autoplay can be rejected until the stream paints; retry once shortly.
+        setTimeout(() => {
+          if (cancelled || unmountedRef.current || !streamRef.current) return;
+          setFrameReady(true);
+          scanLoop(video);
+        }, 250);
+      });
+    };
+
+    if (video.readyState >= 2) {
+      begin();
+    } else {
+      video.onloadedmetadata = begin;
+      // Safety net: some browsers resolve frames without firing
+      // loadedmetadata for MediaStream sources.
+      video.oncanplay = begin;
+    }
+
+    return () => {
+      cancelled = true;
+      video.onloadedmetadata = null;
+      video.oncanplay = null;
+    };
+  }, [cameraOn]);
 
   const extractToken = (raw) => {
     // The QR encodes the raw token, but may be wrapped in a URL
@@ -178,13 +233,13 @@ const QRScanner = ({ onClose, onScan }) => {
       setCameraNotice('Using built-in scanner for this browser.');
     }
 
-    // Modest resolution keeps decode latency and CPU load low on phones and
-    // laptops; 1280x720 is more than enough for a QR code. Prefer the rear
-    // camera, then fall back to any camera when a device rejects the
-    // facingMode constraint (some desktops / older browsers).
+    // Ask for a modest resolution: enough to resolve a QR code, cheap to
+    // decode and fast to negotiate. Over-tight constraints make some phones
+    // take seconds to return a stream (or fall through the fallback chain).
+    // Prefer the rear camera, then relax to any camera.
     const attempts = [
       { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
-      { video: { facingMode: 'environment' } },
+      { video: { facingMode: { ideal: 'environment' } } },
       { video: true },
     ];
 
@@ -226,28 +281,11 @@ const QRScanner = ({ onClose, onScan }) => {
       return;
     }
 
+    // Store the stream and switch the UI to the video view. The effect above
+    // wires srcObject/play()/scan-loop once the <video> is actually mounted.
     streamRef.current = stream;
+    scanningRef.current = true;
     setCameraOn(true);
-    const video = videoRef.current;
-    if (video) {
-      video.setAttribute('playsinline', 'true');
-      video.setAttribute('webkit-playsinline', 'true');
-      video.setAttribute('muted', 'true');
-      video.muted = true;
-      video.srcObject = stream;
-      try {
-        await video.play();
-      } catch {
-        // iOS occasionally rejects play() until the stream paints; the
-        // metadata event below retries.
-      }
-      if (unmountedRef.current) return;
-      if (video.readyState >= 2) {
-        scanLoop(video);
-      } else {
-        video.onloadedmetadata = () => { if (!unmountedRef.current) scanLoop(video); };
-      }
-    }
   };
 
   const handleManualSubmit = (e) => {
@@ -288,9 +326,15 @@ const QRScanner = ({ onClose, onScan }) => {
             {cameraOn && (
               <div className="rounded-xl overflow-hidden bg-black relative">
                 <video ref={videoRef} className="w-full h-64 object-cover" playsInline muted autoPlay />
+                {!frameReady && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 text-white">
+                    <Loader2 size={32} className="animate-spin mb-2" />
+                    <p className="text-xs">Starting camera preview…</p>
+                  </div>
+                )}
                 <div className="absolute inset-0 border-2 border-primary rounded-xl pointer-events-none overlay-frame" />
                 <p className="absolute bottom-2 left-0 right-0 text-center text-white text-xs bg-black/50 py-1">
-                  {scanning ? 'Recording attendance...' : 'Point camera at the QR code'}
+                  {scanning ? 'Recording attendance...' : frameReady ? 'Point camera at the QR code' : 'Preparing camera…'}
                 </p>
               </div>
             )}
