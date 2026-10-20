@@ -7,6 +7,7 @@ import {
 import { profileApi, normalizeRole } from '../../lib/profile';
 import { projectsApi } from '../../lib/projects';
 import { authApi } from '../../lib/auth';
+import { APP_BUILD } from '../../lib/appBuild';
 import { statusBadge } from '../Projects/projectUi';
 
 const getInitials = (name) => {
@@ -472,6 +473,12 @@ const ProfilePage = () => {
         </button>
         {deleteError && <p className="mt-2 text-[13px] text-danger">{deleteError}</p>}
       </div>
+
+      {/* Which build this device is actually running. If the line is missing
+          after a refresh, the device never received the current shell. */}
+      <p className="pb-2 text-center text-[11px] text-text-muted select-none">
+        App build · {APP_BUILD}
+      </p>
 
       {showDeleteConfirm && (
         <div
