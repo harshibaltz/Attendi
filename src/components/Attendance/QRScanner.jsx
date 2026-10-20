@@ -1,8 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { QrCode, X, CheckCircle, AlertCircle, Camera, Keyboard } from 'lucide-react';
+import jsQR from 'jsqr';
 import api from '../../lib/api';
 
 const BarcodeDetectorApi = typeof window !== 'undefined' ? (window.BarcodeDetector || null) : null;
+
+const getCameraSupport = () => {
+  if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+    return { ok: false, reason: 'Camera access requires a secure (HTTPS) connection and a supported browser.' };
+  }
+  return { ok: true };
+};
 
 const QRScanner = ({ onClose, onScan }) => {
   const [scanning, setScanning] = useState(false);
@@ -11,10 +19,19 @@ const QRScanner = ({ onClose, onScan }) => {
   const [manualCode, setManualCode] = useState('');
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraError, setCameraError] = useState('');
+  const [cameraNotice, setCameraNotice] = useState('');
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+  const rafRef = useRef(null);
+  const scanningRef = useRef(false);
+  const canvasRef = useRef(null);
 
   const stopCamera = () => {
+    scanningRef.current = false;
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
@@ -65,53 +82,127 @@ const QRScanner = ({ onClose, onScan }) => {
     }
   };
 
-  const startCamera = async () => {
-    setCameraError('');
-    if (!BarcodeDetectorApi) {
-      setCameraError('Camera scanning is not supported in this browser. Use the code entry below.');
-      return;
-    }
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError('Camera access is unavailable. Use the code entry below.');
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
-      });
-      streamRef.current = stream;
-      setCameraOn(true);
-      const video = videoRef.current;
-      if (video) {
-        video.srcObject = stream;
-        await video.play();
-        await scanLoop(video);
+  // Decode a single frame. Prefer the native BarcodeDetector (fast, hardware
+  // accelerated) and fall back to jsQR, which works everywhere including
+  // iOS Safari, Firefox and Edge where BarcodeDetector is unavailable.
+  const decodeFrame = async (video) => {
+    if (BarcodeDetectorApi) {
+      try {
+        const detector = new BarcodeDetectorApi({ formats: ['qr_code'] });
+        const codes = await detector.detect(video);
+        if (codes.length > 0) return codes[0].rawValue;
+      } catch {
+        // fall through to jsQR
       }
-    } catch (err) {
-      setCameraError('Could not access the camera: ' + (err?.message || 'Permission denied.'));
     }
+    // jsQR needs a canvas snapshot of the current video frame.
+    const canvas = canvasRef.current || document.createElement('canvas');
+    canvasRef.current = canvas;
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    if (!w || !h) return null;
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0, w, h);
+    const imageData = ctx.getImageData(0, 0, w, h);
+    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+      inversionAttempts: 'dontInvert',
+    });
+    return code?.data || null;
   };
 
-  const scanLoop = async (video) => {
-    if (!video || !BarcodeDetectorApi) return;
-    const detector = new BarcodeDetectorApi({ formats: ['qr_code'] });
-    let stop = false;
-    const loop = async () => {
-      if (stop) return;
+  const scanLoop = (video) => {
+    scanningRef.current = true;
+    const tick = async () => {
+      if (!scanningRef.current) return;
       try {
-        const codes = await detector.detect(video);
-        if (codes.length > 0) {
-          stop = true;
+        const value = await decodeFrame(video);
+        if (value) {
+          scanningRef.current = false;
           stopCamera();
-          await submitScan(codes[0].rawValue);
+          await submitScan(value);
           return;
         }
       } catch {
-        // continue scanning
+        // keep scanning
       }
-      if (!stop) setTimeout(loop, 200);
+      if (scanningRef.current) rafRef.current = requestAnimationFrame(tick);
     };
-    loop();
+    rafRef.current = requestAnimationFrame(tick);
+  };
+
+  const startCamera = async () => {
+    setCameraError('');
+    setCameraNotice('');
+
+    const support = getCameraSupport();
+    if (!support.ok) {
+      setCameraError(support.reason + ' Use the code entry below.');
+      return;
+    }
+
+    if (!BarcodeDetectorApi) {
+      // No native decoder, but jsQR covers these browsers, so continue and
+      // still request the camera instead of refusing outright.
+      setCameraNotice('Using built-in scanner for this browser.');
+    }
+
+    // Prefer the rear camera; fall back to any camera when a device rejects
+    // the facingMode constraint (some desktops / older browsers).
+    const attempts = [
+      { video: { facingMode: { ideal: 'environment' } } },
+      { video: { facingMode: 'environment' } },
+      { video: true },
+    ];
+
+    let stream = null;
+    let lastErr = null;
+    for (const constraints of attempts) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        break;
+      } catch (err) {
+        lastErr = err;
+        // Permission denied / no camera: retrying other constraints won't help.
+        if (err?.name === 'NotAllowedError' || err?.name === 'SecurityError') break;
+      }
+    }
+
+    if (!stream) {
+      const name = lastErr?.name;
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        setCameraError('Camera permission was denied. Allow camera access in your browser settings, or use the code entry below.');
+      } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+        setCameraError('No usable camera was found on this device. Use the code entry below.');
+      } else {
+        setCameraError('Could not access the camera: ' + (lastErr?.message || 'unknown error') + '. Use the code entry below.');
+      }
+      return;
+    }
+
+    streamRef.current = stream;
+    setCameraOn(true);
+    const video = videoRef.current;
+    if (video) {
+      video.setAttribute('playsinline', 'true');
+      video.setAttribute('webkit-playsinline', 'true');
+      video.setAttribute('muted', 'true');
+      video.muted = true;
+      video.srcObject = stream;
+      try {
+        await video.play();
+      } catch {
+        // iOS occasionally rejects play() until the stream paints; the
+        // metadata event below retries.
+      }
+      if (video.readyState >= 2) {
+        scanLoop(video);
+      } else {
+        video.onloadedmetadata = () => scanLoop(video);
+      }
+    }
   };
 
   const handleManualSubmit = (e) => {
@@ -151,7 +242,7 @@ const QRScanner = ({ onClose, onScan }) => {
           <>
             {cameraOn && (
               <div className="rounded-xl overflow-hidden bg-black relative">
-                <video ref={videoRef} className="w-full h-64 object-cover" playsInline muted />
+                <video ref={videoRef} className="w-full h-64 object-cover" playsInline muted autoPlay />
                 <div className="absolute inset-0 border-2 border-primary rounded-xl pointer-events-none overlay-frame" />
                 <p className="absolute bottom-2 left-0 right-0 text-center text-white text-xs bg-black/50 py-1">
                   {scanning ? 'Recording attendance...' : 'Point camera at the QR code'}
@@ -170,6 +261,9 @@ const QRScanner = ({ onClose, onScan }) => {
                   <div>
                     <QrCode size={64} className="mx-auto text-primary" />
                     <p className="text-text-secondary mt-2">Use your camera to scan the QR code</p>
+                    {cameraNotice && (
+                      <p className="text-xs text-text-secondary mt-1">{cameraNotice}</p>
+                    )}
                   </div>
                 )}
                 <button
