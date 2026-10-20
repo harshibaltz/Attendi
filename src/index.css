@@ -396,6 +396,31 @@
 }
 
 /* ============================================================
+   AUTH SCREENS
+   Grey panel with white fields: on the old white panel the inputs
+   were white too, so they had no edge and the placeholder was the
+   only thing giving them away. The panel takes the canvas tone,
+   the fields stay surface (white in light, dark in dark) and pick
+   up a hairline + hairline shadow, and the placeholder drops to a
+   lighter grey so typed text clearly wins.
+   ============================================================ */
+@layer components {
+  .fet-auth-panel { background-color: rgb(var(--canvas)); }
+
+  .fet-auth-panel .fet-input,
+  .fet-auth-panel .fet-select {
+    background-color: rgb(var(--surface));
+    border-color: rgb(var(--line-2));
+    box-shadow: var(--sh-1);
+  }
+
+  .fet-auth-panel .fet-input::placeholder,
+  .fet-auth-panel .fet-select::placeholder {
+    color: rgb(var(--ink-3) / .75);
+  }
+}
+
+/* ============================================================
    PILL, TAG, BADGE
    ============================================================ */
 .ui-pill {

@@ -76,7 +76,7 @@ const OtpVerification = ({ email, onVerified, onBack }) => {
 
   return (
     <div className="min-h-screen flex">
-      <div className="flex-1 flex items-center justify-center p-6 bg-white">
+      <div className="flex-1 flex items-center justify-center p-6 fet-auth-panel">
         <div className="w-full max-w-[400px]">
           <div className="flex items-center gap-3 mb-10">
             <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#3F35B5' }}>
