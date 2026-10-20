@@ -195,7 +195,7 @@ const StudentAttendance = ({ user }) => {
           <div>
             <h3 className="text-lg font-bold text-text-primary">Check-in now</h3>
             <p className="text-sm text-text-secondary">
-              {liveStation ? 'You are a station â€” classmates scan your QR.' : 'Scan the QR your lecturer is showing to record your presence.'}
+              {liveStation ? 'You are a station — classmates scan your QR.' : 'Scan the QR your lecturer is showing to record your presence.'}
             </p>
           </div>
           {!liveStation && (
@@ -619,8 +619,8 @@ const LecturerAttendance = () => {
       <div className="space-y-4">
         {displaySessions.map((session) => {
           const present = session.present ?? session.total_present ?? 0;
-          const eligible = session.total_eligible ?? 'â€”';
-          const pct = eligible === 'â€”' || eligible === 0 ? 0 : Math.round((present / eligible) * 100);
+          const eligible = session.total_eligible ?? '—';
+          const pct = eligible === '—' || eligible === 0 ? 0 : Math.round((present / eligible) * 100);
           const left = secondsLeft(new Date(session.expires_at).getTime(), now);
           return (
             <div key={session.id} className="ui-live">
@@ -857,7 +857,7 @@ const LecturerAttendance = () => {
           <p className="text-white font-mono text-xl mt-6 font-bold tracking-widest break-all max-w-xl text-center">
             {projectorToken || (projectorError ? 'No QR code' : 'Generating QR...')}
           </p>
-          <p className="text-white/60 mt-2">Students scan to mark attendance â€” {activeSession.course_code} Â· {activeSession.class_name}</p>
+          <p className="text-white/60 mt-2">Students scan to mark attendance — {activeSession.course_code} · {activeSession.class_name}</p>
         </div>
       )}
 
@@ -876,8 +876,8 @@ const LecturerAttendance = () => {
                     <Square size={14} /> Close Session
                   </button>
                 )}
-                <button onClick={() => { setSelectedSession(null); setCorrectingRecord(null); }} className="p-1 hover:bg-page-bg rounded-lg">
-                  <span className="text-2xl">Ã—</span>
+                <button onClick={() => { setSelectedSession(null); setCorrectingRecord(null); }} className="p-1 hover:bg-page-bg rounded-lg" aria-label="Close session details">
+                  <X size={20} />
                 </button>
               </div>
             </div>
