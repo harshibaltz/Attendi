@@ -388,7 +388,7 @@ const AssessmentPanel = ({ offeringId, user }) => {
                         >
                           {published ? 'Unpublish' : 'Publish'}
                         </button>
-                        <button onClick={() => handleDeleteGroup(g)} className="p-1 hover:bg-red-50 rounded">
+                        <button onClick={() => handleDeleteGroup(g)} className="p-2 -m-1 hover:bg-red-50 rounded">
                           <Trash2 size={14} className="text-red-500" />
                         </button>
                       </div>
@@ -671,7 +671,7 @@ const AssessmentPanel = ({ offeringId, user }) => {
                       <CheckCircle2 size={15} /> Publish
                     </button>
                   )}
-                  <button onClick={() => handleDelete(a)} className="p-1.5 hover:bg-red-50 rounded-lg" title="Delete assessment">
+                  <button onClick={() => handleDelete(a)} className="p-2 -m-1 hover:bg-red-50 rounded-lg" title="Delete assessment">
                     <Trash2 size={16} className="text-red-500" />
                   </button>
                 </div>

@@ -71,7 +71,7 @@ const AttendanceSession = ({ onClose, onCreated }) => {
       <div className="fet-card bg-surface text-text-primary rounded-2xl shadow-modal max-w-2xl w-full max-h-[85dvh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b border-border-default">
           <h3 className="text-xl font-bold text-text-primary">Start Attendance Session</h3>
-          <button onClick={onClose} className="p-1 hover:bg-page-bg rounded-lg">
+          <button onClick={onClose} className="p-1.5 hover:bg-page-bg rounded-lg">
             <X size={24} className="text-text-secondary" />
           </button>
         </div>
@@ -150,7 +150,7 @@ const AttendanceSession = ({ onClose, onCreated }) => {
 
               <div>
                 <label className="fet-label">Attendance Mode</label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <button
                     type="button"
                     onClick={() => setFormData((prev) => ({ ...prev, mode: 'STATIONS' }))}

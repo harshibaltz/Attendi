@@ -298,7 +298,7 @@ const AnnouncementList = ({ user }) => {
               <button
                 type="button"
                 onClick={() => setShowForm(false)}
-                className="rounded-md p-1 transition-colors hover:bg-page-bg"
+                className="rounded-md p-1.5 transition-colors hover:bg-page-bg"
                 aria-label="Close"
               >
                 <X size={20} className="text-text-secondary" />

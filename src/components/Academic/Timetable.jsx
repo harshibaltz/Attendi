@@ -243,7 +243,7 @@ const Timetable = () => {
                         <button
                           type="button"
                           onClick={() => removeSlot(s.id)}
-                          className="text-text-tertiary hover:text-danger shrink-0"
+                          className="p-2 -m-1 rounded text-text-tertiary hover:text-danger hover:bg-red-50 shrink-0"
                           aria-label="Remove slot"
                         >
                           <Trash2 size={15} />

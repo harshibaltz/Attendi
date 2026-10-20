@@ -423,8 +423,8 @@ const CourseDetail = ({ user }) => {
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">{errorMsg}</div>
       )}
 
-      {/* Tabs */}
-      <div className="flex gap-1 border-b border-border-default">
+      {/* Tabs — scroll horizontally instead of pushing the page wide */}
+      <div className="flex gap-1 border-b border-border-default overflow-x-auto">
         {[
           { key: 'materials', label: `Materials (${materials.length})`, icon: FileText },
           { key: 'announcements', label: `Announcements (${announcements.length})`, icon: Megaphone },
@@ -434,7 +434,7 @@ const CourseDetail = ({ user }) => {
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-xl border-b-2 transition-colors ${
+            className={`flex shrink-0 items-center gap-2 whitespace-nowrap px-4 py-2.5 text-sm font-medium rounded-t-xl border-b-2 transition-colors ${
               tab === t.key
                 ? 'border-primary text-primary bg-primary/5'
                 : 'border-transparent text-text-secondary hover:text-text-primary'

@@ -104,8 +104,8 @@ const RosterUpload = () => {
                 <Upload size={14} /> {busy ? 'Uploading...' : 'Upload roster'}
               </button>
               {file ? (
-                <span className="text-[12.5px] text-text-secondary flex items-center gap-1.5">
-                  <FileSpreadsheet size={14} /> {file.name}
+                <span className="min-w-0 text-[12.5px] text-text-secondary flex items-center gap-1.5">
+                  <FileSpreadsheet size={14} className="shrink-0" /> <span className="truncate">{file.name}</span>
                 </span>
               ) : null}
             </div>
@@ -115,7 +115,7 @@ const RosterUpload = () => {
 
       {result ? (
         <>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
               { label: 'Accounts created', value: result.created_count, tone: 'ok' },
               { label: 'Profiles updated', value: result.updated_count, tone: 'mute' },

@@ -224,6 +224,7 @@
   border-bottom: 1px solid rgb(var(--line));
   background-color: rgb(var(--surface-2));
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap;
 }
 .ui-card-foot {
   padding: 11px 16px;
@@ -714,8 +715,12 @@
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 .animate-fade-in { animation: fade-in .15s ease; }
 
-@media (max-width: 768px) { .fet-desktop-only { display: none !important; } }
-@media (min-width: 769px) { .fet-mobile-only { display: none !important; } }
+/* Breakpoints must match the sidebar's `lg:` pinning (Tailwind lg = 1024px).
+   Between 768 and 1023 the sidebar is an off-canvas drawer, so the hamburger
+   and overlay have to stay visible there too — at 769px the drawer was
+   hidden AND the hamburger was hidden, leaving no way to navigate. */
+@media (max-width: 1023px) { .fet-desktop-only { display: none !important; } }
+@media (min-width: 1024px) { .fet-mobile-only { display: none !important; } }
 
 /* ============================================================
    MOBILE

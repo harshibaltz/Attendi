@@ -337,7 +337,7 @@ const MyCourses = ({ user }) => {
                   Pick one of your courses. Everyone registered for it joins automatically.
                 </p>
               </div>
-              <button onClick={() => setShowCreate(false)} className="p-1 hover:bg-page-bg rounded-lg">
+              <button onClick={() => setShowCreate(false)} className="p-1.5 hover:bg-page-bg rounded-lg">
                 <X size={22} className="text-text-secondary" />
               </button>
             </div>

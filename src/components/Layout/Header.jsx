@@ -68,7 +68,10 @@ const Header = ({ user, onLogout }) => {
 
   return (
     <header className="relative z-40 flex h-[58px] shrink-0 items-center gap-3 border-b border-border-default bg-surface px-4 md:px-6">
-      <div className="relative hidden md:block max-w-[430px] flex-1">
+      {/* Search is shown only when the sidebar is pinned (lg+). Below that the
+          hamburger sits in the header's left area, so the field would collide
+          with it — and the flex-1 spacer keeps that corner clear. */}
+      <div className="relative hidden lg:block max-w-[430px] flex-1">
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
         <input
           type="text"
@@ -77,7 +80,7 @@ const Header = ({ user, onLogout }) => {
           style={{ backgroundColor: 'rgb(var(--canvas))' }}
         />
         <span
-          className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 items-center rounded-[4px] border border-border-default bg-surface px-1.5 text-[10px] text-text-secondary md:flex"
+          className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 items-center rounded-[4px] border border-border-default bg-surface px-1.5 text-[10px] text-text-secondary lg:flex"
           style={{ height: 19, borderBottomWidth: 2 }}
         >
           Ctrl K

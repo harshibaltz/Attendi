@@ -88,7 +88,7 @@ const StationQR = ({ sessionId, station }) => {
       </div>
 
       {scanStats && (
-        <div className="mt-3 flex justify-between text-xs text-white/80">
+        <div className="mt-3 flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs text-white/80">
           <span>Scanned at your station: <span className="font-bold">{scanStats.scans_at_station}</span></span>
           {scanStats.scans_remaining !== null && scanStats.scans_remaining !== undefined && (
             <span>Scans left: <span className="font-bold">{scanStats.scans_remaining}</span></span>
@@ -97,8 +97,8 @@ const StationQR = ({ sessionId, station }) => {
         </div>
       )}
 
-      <div className="flex items-center justify-between mt-4">
-        <p className="text-sm text-white/80">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+        <p className="min-w-0 break-words text-sm text-white/80">
           {courseCode} · {className}
         </p>
         <button

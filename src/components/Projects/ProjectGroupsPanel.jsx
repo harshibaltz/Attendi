@@ -265,7 +265,7 @@ const ProjectGroupsPanel = ({ project, canManageGroups, canManageProject, onChan
                     <button
                       onClick={() => deleteGroup(g)}
                       disabled={busy}
-                      className="p-1.5 rounded-lg text-text-secondary hover:text-danger hover:bg-red-50"
+                      className="p-2 -m-1 rounded-lg text-text-secondary hover:text-danger hover:bg-red-50"
                       title="Delete group"
                     >
                       <Trash2 size={15} />

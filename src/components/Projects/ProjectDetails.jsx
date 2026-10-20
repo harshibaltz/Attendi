@@ -301,10 +301,10 @@ const MembersTab = ({ projectId, groups, members, canManage, scope, onChanged })
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h4 className="font-semibold text-text-primary">Project Groups & Members</h4>
         {canManage && scope === 'CLASS_WIDE' ? (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button onClick={() => setShowAddGroup(true)} className="fet-btn-secondary text-[13px] flex items-center gap-1">
               <Plus size={14} /> Add Group
             </button>
@@ -631,7 +631,7 @@ const TaskForm = ({ projectId, groups, members, fixedGroupId = '', onClose, onDo
             <label className="fet-label">Description</label>
             <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} className="fet-input resize-none border-border-default bg-surface-2 text-text-primary placeholder:text-text-muted" />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="fet-label">Priority</label>
               <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })} className="fet-select border-border-default bg-surface-2 text-text-primary">
@@ -792,7 +792,7 @@ const MilestoneForm = ({ milestone, initialDue, onClose, onSubmit }) => {
             <label className="fet-label">Description</label>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} className="fet-input resize-none border-border-default bg-surface-2 text-text-primary placeholder:text-text-muted" />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="fet-label">Due</label>
               <input type="datetime-local" value={due_at} onChange={(e) => setDueAt(e.target.value)} className="fet-input border-border-default bg-surface-2 text-text-primary" />
@@ -1052,7 +1052,7 @@ const ReportModal = ({ report, onClose }) => {
           <h3 className="text-[15px] font-bold text-text-primary">
             {report.project?.title} — {report.group?.name}
           </h3>
-          <button onClick={onClose} className="p-1 hover:bg-page-bg rounded-lg"><X size={20} className="text-text-secondary" /></button>
+          <button onClick={onClose} className="p-1.5 hover:bg-page-bg rounded-lg"><X size={20} className="text-text-secondary" /></button>
         </div>
         <div className="p-5 space-y-5">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

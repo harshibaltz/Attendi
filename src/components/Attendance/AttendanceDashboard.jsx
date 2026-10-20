@@ -804,14 +804,14 @@ const LecturerAttendance = () => {
 
       {/* Projector overlay with REAL QR */}
       {showProjector && activeSession && (
-        <div className="fixed inset-0 bg-[#0a0a1a] z-[100] flex flex-col items-center justify-center p-8">
+        <div className="fixed inset-0 bg-[#0a0a1a] z-[100] flex flex-col items-center justify-center p-4 sm:p-8">
           <button
             onClick={() => { setShowProjector(false); setProjectorToken(null); setProjectorError(''); }}
             className="absolute top-4 right-4 flex items-center gap-2 px-4 py-2 bg-white/10 text-white rounded-xl hover:bg-white/20"
           >
             <X size={18} /> Exit Projector
           </button>
-          <div className="flex items-center gap-2 text-white/60 mb-4">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-white/60 mb-4">
             <Clock size={16} />
             <span>
               Closes in:{' '}
@@ -820,33 +820,40 @@ const LecturerAttendance = () => {
                 {String(Math.max(0, Math.floor((projectorRemaining / 1000) % 60))).padStart(2, '0')}
               </span>
             </span>
-            <span className="ml-4 text-white/40">QR refreshes every {projectorExpiresIn}s</span>
-            <span className="ml-4">Present: <span className="font-bold">{activeSession.present ?? activeSession.total_present ?? 0}</span></span>
+            <span className="text-white/40">QR refreshes every {projectorExpiresIn}s</span>
+            <span>Present: <span className="font-bold">{activeSession.present ?? activeSession.total_present ?? 0}</span></span>
             {activeSession.expected_headcount ? (
-              <span className="ml-4">Headcount remaining: <span className="font-bold">{activeSession.headcount_remaining ?? 0}</span></span>
+              <span>Headcount remaining: <span className="font-bold">{activeSession.headcount_remaining ?? 0}</span></span>
             ) : null}
           </div>
-          <div className="bg-white rounded-3xl p-10 shadow-2xl">
-            {projectorToken ? (
-              <QRCodeDisplay value={projectorToken} size={360} />
-            ) : projectorError ? (
-              <div className="w-[360px] h-[360px] flex flex-col items-center justify-center gap-3 text-center px-4">
-                <AlertCircle size={44} className="text-red-500" />
-                <p className="font-semibold text-text-primary">No QR code</p>
-                <p className="text-sm text-text-secondary">{projectorError}</p>
-                <button
-                  onClick={() => { setShowProjector(false); setShowCreateSession(true); }}
-                  className="fet-btn-primary mt-2"
-                >
-                  Start a new session
-                </button>
+          {/* QR must fit the narrowest phone: overlay p-4 + card p-4 leaves
+              width-80px, and the countdown re-renders keep this current. */}
+          {(() => {
+            const qrSize = Math.max(200, Math.min(360, (window.innerWidth || 1024) - 80));
+            return (
+              <div className="bg-white rounded-3xl p-4 sm:p-10 shadow-2xl">
+                {projectorToken ? (
+                  <QRCodeDisplay value={projectorToken} size={qrSize} />
+                ) : projectorError ? (
+                  <div style={{ width: qrSize, height: qrSize }} className="flex flex-col items-center justify-center gap-3 text-center px-4">
+                    <AlertCircle size={44} className="text-red-500" />
+                    <p className="font-semibold text-text-primary">No QR code</p>
+                    <p className="text-sm text-text-secondary">{projectorError}</p>
+                    <button
+                      onClick={() => { setShowProjector(false); setShowCreateSession(true); }}
+                      className="fet-btn-primary mt-2"
+                    >
+                      Start a new session
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ width: qrSize, height: qrSize }} className="flex items-center justify-center">
+                    <Loader2 size={48} className="animate-spin text-[#0F0B3D]" />
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="w-[360px] h-[360px] flex items-center justify-center">
-                <Loader2 size={48} className="animate-spin text-[#0F0B3D]" />
-              </div>
-            )}
-          </div>
+            );
+          })()}
           <p className="text-white font-mono text-xl mt-6 font-bold tracking-widest break-all max-w-xl text-center">
             {projectorToken || (projectorError ? 'No QR code' : 'Generating QR...')}
           </p>
@@ -875,7 +882,7 @@ const LecturerAttendance = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
               <div><span className="font-semibold">Course:</span> {selectedSession.course_code} - {selectedSession.class_name}</div>
               <div><span className="font-semibold">Started:</span> {fmtDate(selectedSession.started_at)} {fmtTime(selectedSession.started_at)}</div>
               <div><span className="font-semibold">Expires:</span> {fmtTime(selectedSession.expires_at)}</div>

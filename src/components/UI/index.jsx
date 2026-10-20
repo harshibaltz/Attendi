@@ -256,26 +256,30 @@ export function EmptyState({ icon: Icon, title, subtitle, action }) {
 export function DataTable({ columns, rows, empty }) {
   if (!rows.length) return empty || null;
   return (
-    <table className="fet-table">
-      <thead>
-        <tr>
-          {columns.map((c) => (
-            <th key={c.key} style={c.width ? { width: c.width } : undefined}>{c.label}</th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row, i) => (
-          <tr key={row.id || i}>
+    /* Cards are overflow:hidden, so without this wrapper wide tables were
+       clipped on phones (right-hand columns unreachable). */
+    <div className="overflow-x-auto">
+      <table className="fet-table">
+        <thead>
+          <tr>
             {columns.map((c) => (
-              <td key={c.key} className={c.align === 'right' ? 'text-right' : undefined}>
-                {c.render ? c.render(row, i) : row[c.key]}
-              </td>
+              <th key={c.key} style={c.width ? { width: c.width } : undefined}>{c.label}</th>
             ))}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={row.id || i}>
+              {columns.map((c) => (
+                <td key={c.key} className={c.align === 'right' ? 'text-right' : undefined}>
+                  {c.render ? c.render(row, i) : row[c.key]}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
