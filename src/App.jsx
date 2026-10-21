@@ -16,6 +16,7 @@ import ResetPassword from './components/Auth/ResetPassword';
 import ChangePassword from './components/Auth/ChangePassword';
 import ProfilePage from './components/Profile/ProfilePage';
 import AttendanceDashboard from './components/Attendance/AttendanceDashboard';
+import SessionDetail from './components/Attendance/SessionDetail';
 import ProjectsList from './components/Projects/ProjectsList';
 import ProjectDetails from './components/Projects/ProjectDetails';
 import ContinuousAssessment from './components/Assessment/ContinuousAssessment';
@@ -46,7 +47,8 @@ const RequireRole = ({ role, children }) => {
     userRole = localStorage.getItem('fet_user_role') || 'student';
   }
 
-  if (normalizeRole(userRole) !== normalizeRole(role)) {
+  const allowed = Array.isArray(role) ? role : [role];
+  if (!allowed.some((r) => normalizeRole(userRole) === normalizeRole(r))) {
     return <Navigate to="/" replace />;
   }
   return children;
@@ -261,6 +263,10 @@ function App() {
                   <Route path="/lessons" element={<MyCourses user={user} />} />
                   <Route path="/lessons/:offeringId" element={<CourseDetail user={user} />} />
                   <Route path="/attendance" element={<AttendanceDashboard user={user} />} />
+                  <Route
+                    path="/attendance/sessions/:sessionId"
+                    element={<RequireRole role={['lecturer', 'admin']}><SessionDetail /></RequireRole>}
+                  />
                 <Route path="/projects" element={<ProjectsList />} />
                 <Route path="/projects/:id" element={<ProjectDetails />} />
                 <Route path="/assessment" element={<ContinuousAssessment user={user} />} />

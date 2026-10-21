@@ -99,19 +99,33 @@ const LecturerDashboard = ({ user }) => {
 
       {/* Teaching load */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-        <StatsCard icon={BookOpen} label="Courses Taught" value={courses.length} color="primary" />
-        <StatsCard icon={Users} label="Students Taught" value={totals.students} color="secondary" />
+        <StatsCard
+          icon={BookOpen}
+          label="Courses Taught"
+          value={courses.length}
+          color="primary"
+          onClick={() => navigate('/lessons')}
+        />
+        <StatsCard
+          icon={Users}
+          label="Students Taught"
+          value={totals.students}
+          color="secondary"
+          onClick={() => navigate('/lessons')}
+        />
         <StatsCard
           icon={ClipboardCheck}
           label="To Grade"
           value={totals.ungraded}
           color={totals.ungraded > 0 ? 'warning' : 'secondary'}
+          onClick={() => navigate('/assessment')}
         />
         <StatsCard
           icon={AlertTriangle}
           label="Mark Disputes"
           value={totals.disputes}
           color={totals.disputes > 0 ? 'error' : 'secondary'}
+          onClick={() => navigate('/assessment')}
         />
       </div>
 

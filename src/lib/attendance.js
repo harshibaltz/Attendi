@@ -53,6 +53,10 @@ export const attendanceApi = {
   studentOfClass: (sessionId) => api.post(`/attendance/${sessionId}/student-of-class/`).then(unwrap),
   sessionRecords: (classSessionId) =>
     api.get(`/class-sessions/${classSessionId}/attendance/records/`).then(unwrap),
+  // One specific session: its header + the per-student check-in rows
+  // (name, matricule, department, level, timestamp).
+  sessionDetail: (attendanceSessionId) =>
+    api.get(`/attendance/${attendanceSessionId}/records/`).then(unwrap),
 };
 
 export default attendanceApi;

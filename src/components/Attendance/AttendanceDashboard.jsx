@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Calendar, Clock, QrCode, Plus,
   Eye, X, Monitor, Square, Loader2, RefreshCw, Pencil, Award, CreditCard, Trash2, AlertCircle,
@@ -305,6 +306,7 @@ const StudentAttendance = ({ user }) => {
 
 /* ---------------------------- LECTURER VIEW ---------------------------- */
 const LecturerAttendance = () => {
+  const navigate = useNavigate();
   const [now, setNow] = useState(Date.now());
   const [sessions, setSessions] = useState([]);
   const [records, setRecords] = useState({});
@@ -802,7 +804,12 @@ const LecturerAttendance = () => {
               </thead>
               <tbody>
                 {historySessions.map((session) => (
-                  <tr key={session.id}>
+                  <tr
+                    key={session.id}
+                    onClick={() => navigate(`/attendance/sessions/${session.id}`)}
+                    className="cursor-pointer"
+                    title="View detailed register"
+                  >
                     <td className="font-medium">{session.course_code}</td>
                     <td>{session.class_name}</td>
                     <td>{fmtDate(session.started_at)}</td>
