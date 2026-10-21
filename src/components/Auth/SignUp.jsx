@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Lock, Eye, EyeOff, User, UserPlus, ArrowLeft, Building, GraduationCap, BookOpen, BadgeCheck } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, User, UserPlus, ArrowLeft, Building, GraduationCap, BookOpen, BadgeCheck, ChevronDown } from 'lucide-react';
 import { authApi } from '../../lib/auth';
 import { academicsApi } from '../../lib/academics';
 
@@ -147,7 +147,7 @@ const SignUp = ({ onSignUp, onSwitchToLogin }) => {
         return;
       }
       if (!formData.personalEmail.trim()) {
-        setError('Personal email is required for students.');
+        setError('Institutional email is required for students.');
         setIsLoading(false);
         return;
       }
@@ -266,9 +266,9 @@ const SignUp = ({ onSignUp, onSwitchToLogin }) => {
             <div>
               <label className={labelBase}>Department *</label>
               <div className="relative">
-                <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 text-text-secondary" size={16} />
+                <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 text-text-secondary pointer-events-none" size={16} />
                 <select name="department" value={formData.department} onChange={handleChange}
-                  className={`${inputBase} pl-10`} required>
+                  className={`${inputBase} pl-10 pr-9 appearance-none`} required>
                   <option value="">-- Select Department --</option>
                   {departments.length > 0 ? (
                     departments.map(dept => (
@@ -278,6 +278,7 @@ const SignUp = ({ onSignUp, onSwitchToLogin }) => {
                     <option value="" disabled>Loading departments...</option>
                   )}
                 </select>
+                <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-text-secondary pointer-events-none" size={16} />
               </div>
             </div>
 
@@ -295,18 +296,19 @@ const SignUp = ({ onSignUp, onSwitchToLogin }) => {
                 <div>
                   <label className={labelBase}>Level *</label>
                   <div className="relative">
-                    <GraduationCap className="absolute left-3 top-1/2 transform -translate-y-1/2 text-text-secondary" size={16} />
-                    <select name="level" value={formData.level} onChange={handleChange} className={`${inputBase} pl-10`} required>
+                    <GraduationCap className="absolute left-3 top-1/2 transform -translate-y-1/2 text-text-secondary pointer-events-none" size={16} />
+                    <select name="level" value={formData.level} onChange={handleChange} className={`${inputBase} pl-10 pr-9 appearance-none`} required>
                       <option value="">Select Level</option>
                       <option value="200">200 Level</option>
                       <option value="300">300 Level</option>
                       <option value="400">400 Level</option>
                       <option value="500">500 Level</option>
                     </select>
+                    <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-text-secondary pointer-events-none" size={16} />
                   </div>
                 </div>
                 <div>
-                  <label className={labelBase}>Personal Email *</label>
+                  <label className={labelBase}>Institutional Email *</label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-text-secondary" size={16} />
                     <input type="email" name="personalEmail" value={formData.personalEmail} onChange={handleChange}

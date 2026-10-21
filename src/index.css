@@ -389,6 +389,16 @@
     box-shadow: 0 0 0 3px rgb(var(--primary-bg));
   }
 
+  /* A native select paints its own arrow on top of the text. The sign-up
+     selects replace that arrow with their own chevron, so the option text has
+     to truncate rather than slide underneath it. */
+  .fet-auth-panel select.fet-input,
+  .fet-auth-panel select.fet-select {
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
   .fet-label {
     display: block; font-size: 13px; font-weight: 600;
     color: rgb(var(--ink)); margin-bottom: 6px;
@@ -846,6 +856,17 @@
   .fet-btn-primary, .fet-btn-secondary, .fet-btn-danger,
   .ui-btn-primary, .ui-btn-secondary, .ui-btn-danger { padding: 11px 15px; }
   .fet-input, .ui-input, .fet-select, .ui-select { padding-top: 11px; padding-bottom: 11px; }
+
+  /* The sign-up selects (Department, Level) carry a leading icon and their own
+     chevron, so the option text has less room than a plain input. Give them a
+     taller box on phones so the label, the icon and the long department names
+     ("Electrical and Electronic Engineering") never collide. */
+  .fet-auth-panel select.fet-input,
+  .fet-auth-panel select.fet-select {
+    min-height: 46px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
 
   .ui-course-figs { flex-wrap: wrap; }
   .ui-course-fig { min-width: 50%; border-bottom: 1px solid rgb(var(--line)); }
