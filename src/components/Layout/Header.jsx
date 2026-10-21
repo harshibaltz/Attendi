@@ -89,7 +89,9 @@ const Header = ({ user, onLogout }) => {
     else window.location.reload();
   };
 
-  const panel = 'absolute right-0 top-full mt-2 w-[calc(100vw-2rem)] sm:w-80 bg-surface rounded-lg shadow-modal border border-border-default z-50 overflow-hidden';
+  // On phones the panel is pinned to the viewport (fixed, inset-x) so it can
+  // never overflow the screen edge; from sm up it hangs off the bell as usual.
+  const panel = 'fixed inset-x-3 top-[66px] z-[90] w-auto sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80 bg-surface rounded-lg shadow-modal border border-border-default overflow-hidden max-h-[calc(100dvh-80px)] flex flex-col';
   const menuItem = 'w-full flex items-center gap-2.5 px-4 py-2.5 text-[13px] text-text-primary hover:bg-page-bg transition-colors text-left';
 
   return (
@@ -158,7 +160,7 @@ const Header = ({ user, onLogout }) => {
                   </button>
                 ) : null}
               </div>
-              <div className="max-h-72 overflow-y-auto">
+              <div className="min-h-0 flex-1 overflow-y-auto">
                 {notifications.length === 0 ? (
                   <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
                     <Bell size={22} className="text-text-muted" />
