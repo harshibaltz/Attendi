@@ -10,5 +10,5 @@ export const authApi = {
   requestOtp: (data) => api.post('/auth/forgot-password/request-otp/', data),
   verifyOtp: (data) => api.post('/auth/reset-password/verify-otp/', data),
   confirmReset: (data) => api.post('/auth/reset-password/confirm/', data),
-  deleteAccount: () => api.delete('/auth/account/'),
+  deleteAccount: (data) => api.delete('/auth/account/', { data }),
 };
