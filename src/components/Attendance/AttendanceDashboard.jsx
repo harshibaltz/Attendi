@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
+﻿import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Calendar, Clock, QrCode, Plus,
@@ -133,25 +133,44 @@ const StudentAttendance = ({ user }) => {
   const [showScanner, setShowScanner] = useState(false);
   const [error, setError] = useState('');
   const [now, setNow] = useState(Date.now());
+  // Polls overlap on slow networks; only the newest response may update the UI
+  // so an older payload can never overwrite a newer value.
+  const loadSeq = useRef(0);
 
   const load = useCallback(async () => {
-    try {
-      const [stationData, historyData, pointsData] = await Promise.all([
-        attendanceApi.myStation(),
-        attendanceApi.myAttendance(),
-        attendanceApi.myPoints(),
-      ]);
-      setStation(stationData || null);
-      setHistory(Array.isArray(historyData) ? historyData : []);
-      setPoints(pointsData);
-      setError('');
-    } catch (err) {
-      // Any failure must not leave a stale station banner on screen.
-      setStation(null);
-      setError(err.response?.data?.error?.message || 'Could not load attendance data.');
-    } finally {
-      setLoading(false);
+    const seq = ++loadSeq.current;
+    const results = await Promise.allSettled([
+      attendanceApi.myStation(),
+      attendanceApi.myAttendance(),
+      attendanceApi.myPoints(),
+    ]);
+    if (seq !== loadSeq.current) return;
+
+    const [stationResult, historyResult, pointsResult] = results;
+    let failed = 0;
+    if (stationResult.status === 'fulfilled') {
+      setStation(stationResult.value || null);
+    } else {
+      failed += 1;
     }
+    if (historyResult.status === 'fulfilled') {
+      setHistory(Array.isArray(historyResult.value) ? historyResult.value : []);
+    } else {
+      failed += 1;
+    }
+    if (pointsResult.status === 'fulfilled') {
+      setPoints(pointsResult.value);
+    } else {
+      failed += 1;
+    }
+
+    if (failed === results.length) {
+      const reason = results.find((r) => r.status === 'rejected')?.reason;
+      setError(reason?.response?.data?.error?.message || 'Could not load attendance data.');
+    } else {
+      setError('');
+    }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -236,7 +255,7 @@ const StudentAttendance = ({ user }) => {
                   Multiplier today
                   <InfoTip
                     label="What Multiplier today means"
-                    text="Bonus multiplier applied to attendance points earned for today's sessions based on streak/on-time attendance."
+                    text="Doubles every attendance point earned on your birthday. It is x1 on all other days."
                   />
                 </p>
               </div>
@@ -246,7 +265,9 @@ const StudentAttendance = ({ user }) => {
             <div className="flex items-center gap-3">
               <Calendar size={24} className="text-primary" />
               <div>
-                <p className="text-sm font-semibold text-text-primary">{history.length}</p>
+                <p className="text-sm font-semibold text-text-primary">
+                  {history.filter((r) => r.status === 'PRESENT' || r.status === 'LATE').length}
+                </p>
                 <p className="flex items-center gap-1.5 text-xs text-text-secondary">
                   Sessions attended
                   <InfoTip
@@ -329,6 +350,9 @@ const LecturerAttendance = () => {
   const [correctingRecord, setCorrectingRecord] = useState(null);
   const [correctionStatus, setCorrectionStatus] = useState('PRESENT');
   const [flash, setFlash] = useState('');
+  // One live-status request per session at a time: slow responses must not
+  // stack up and land out of order (which made Present counts jump around).
+  const statusInFlight = useRef(new Set());
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -361,11 +385,15 @@ const LecturerAttendance = () => {
   }, []);
 
   const refreshStatus = useCallback(async (id) => {
+    if (statusInFlight.current.has(id)) return;
+    statusInFlight.current.add(id);
     try {
       const st = await attendanceApi.status(id);
       setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, ...st, status: st.status } : s)));
     } catch {
       // session may have expired server-side
+    } finally {
+      statusInFlight.current.delete(id);
     }
   }, []);
 
