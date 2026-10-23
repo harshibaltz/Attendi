@@ -102,6 +102,9 @@ const ProfilePage = () => {
     setForm({
       first_name: me?.first_name || '',
       last_name: me?.last_name || '',
+      email: me?.email || '',
+      student_number: sp.student_number || '',
+      staff_number: lp.staff_number || '',
       date_of_birth: me?.date_of_birth || '',
       personal_email: sp.personal_email || '',
       level: sp.level || '',
@@ -119,9 +122,11 @@ const ProfilePage = () => {
       const payload = {
         first_name: form.first_name,
         last_name: form.last_name,
+        email: form.email.trim(),
         date_of_birth: form.date_of_birth || null,
       };
       if (isStudent) {
+        payload.student_number = form.student_number.trim();
         payload.personal_email = form.personal_email;
         payload.level = form.level;
         payload.bio = form.bio;
@@ -129,6 +134,7 @@ const ProfilePage = () => {
         payload.achievements = form.achievements.split(',').map((s) => s.trim()).filter(Boolean);
       }
       if (isLecturer) {
+        payload.staff_number = form.staff_number.trim();
         payload.bio = form.bio;
       }
       await profileApi.updateMe(payload);
@@ -142,10 +148,16 @@ const ProfilePage = () => {
       window.dispatchEvent(new CustomEvent('fet-profile-updated'));
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
-      const msg = err.response?.data?.error?.message || err.response?.data?.error?.details
-        ? JSON.stringify(err.response.data.error.details)
-        : 'Could not save your profile.';
-      setError(typeof msg === 'string' ? msg : 'Could not save your profile.');
+      const apiError = err.response?.data?.error;
+      const details = apiError?.details;
+      let detail = '';
+      if (typeof details === 'string') {
+        detail = details;
+      } else if (details && typeof details === 'object') {
+        const first = Object.values(details)[0];
+        detail = Array.isArray(first) ? first[0] : (typeof first === 'string' ? first : '');
+      }
+      setError(detail || apiError?.message || 'Could not save your profile.');
     } finally {
       setSaving(false);
     }
@@ -196,6 +208,12 @@ const ProfilePage = () => {
     && deletePassword
     && deleteConfirm.trim().toUpperCase() === 'DELETE'
     && (deleteReason !== 'OTHER' || deleteImprovement.trim())
+  );
+
+  const canSave = Boolean(
+    form.email?.trim()
+    && (!isStudent || form.student_number?.trim())
+    && (!isLecturer || form.staff_number?.trim())
   );
 
   if (loading) {
@@ -275,11 +293,36 @@ const ProfilePage = () => {
             </Field>
 
             <Field label={isStudent ? 'Matricule Number' : 'Staff / ID'}>
-              <p>{isStudent ? (sp.student_number || '-') : (lp.staff_number || '-')}</p>
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={isStudent ? form.student_number : form.staff_number}
+                  onChange={(e) => setForm({
+                    ...form,
+                    [isStudent ? 'student_number' : 'staff_number']: e.target.value,
+                  })}
+                  className="fet-input"
+                  autoComplete="off"
+                  required
+                />
+              ) : (
+                <p>{isStudent ? (sp.student_number || '-') : (lp.staff_number || '-')}</p>
+              )}
             </Field>
 
-            <Field label="Email">
-              <p className="flex items-center gap-1.5"><Mail size={14} className="text-text-secondary" />{me.email}</p>
+            <Field label="Institutional Email">
+              {isEditing ? (
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  className="fet-input"
+                  autoComplete="email"
+                  required
+                />
+              ) : (
+                <p className="flex items-center gap-1.5"><Mail size={14} className="text-text-secondary" />{me.email}</p>
+              )}
             </Field>
 
             {isStudent && (
@@ -365,7 +408,7 @@ const ProfilePage = () => {
 
           {isEditing && (
             <div className="mt-6 pt-6 border-t border-border-default flex justify-end">
-              <button onClick={handleSave} disabled={saving} className="fet-btn-primary flex items-center gap-2">
+              <button onClick={handleSave} disabled={saving || !canSave} className="fet-btn-primary flex items-center gap-2">
                 <Save size={18} />
                 {saving ? 'Saving...' : 'Save Changes'}
               </button>
