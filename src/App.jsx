@@ -16,6 +16,7 @@ import ResetPassword from './components/Auth/ResetPassword';
 import ChangePassword from './components/Auth/ChangePassword';
 import ProfilePage from './components/Profile/ProfilePage';
 import AttendanceDashboard from './components/Attendance/AttendanceDashboard';
+import CustomerCare from './components/Support/CustomerCare';
 import ProjectsList from './components/Projects/ProjectsList';
 import ProjectDetails from './components/Projects/ProjectDetails';
 import ContinuousAssessment from './components/Assessment/ContinuousAssessment';
@@ -260,6 +261,7 @@ function App() {
                   <Route path="/lessons" element={<MyCourses user={user} />} />
                   <Route path="/lessons/:offeringId" element={<CourseDetail user={user} />} />
                   <Route path="/attendance" element={<AttendanceDashboard user={user} />} />
+                  <Route path="/support" element={<CustomerCare user={user} />} />
                 <Route path="/projects" element={<ProjectsList />} />
                 <Route path="/projects/:id" element={<ProjectDetails />} />
                 <Route path="/assessment" element={<ContinuousAssessment user={user} />} />
