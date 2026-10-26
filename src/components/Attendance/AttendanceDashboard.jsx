@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Calendar, Clock, QrCode, Plus,
   Eye, X, Monitor, Square, Loader2, RefreshCw, Pencil, Award, CreditCard, Trash2, AlertCircle,
-  UserCheck, Search, ChevronDown, CheckCircle2, ClipboardCheck,
+  UserCheck, Search, ChevronDown, CheckCircle2, ClipboardCheck, ArrowRight,
 } from 'lucide-react';
 import attendanceApi from '../../lib/attendance';
 import AttendanceSession from './AttendanceSession';
@@ -13,7 +13,6 @@ import QRCodeDisplay from './QRCode';
 import {
   SectionHeader, Card, CardHead, CardBody, CardFoot, Eyebrow, Pill, Tag, Callout, EmptyState,
 } from '../UI';
-import InfoTip from '../UI/InfoTip';
 
 /** The searchable roster used when picking students to act as QR stations. */
 const StationPickerBody = ({ roster, picked, onToggle, onSave, saving }) => {
@@ -124,6 +123,55 @@ const getRecordStatusColor = (status) => {
   }
 };
 
+const AttendanceMetricCard = ({
+  icon: Icon, value, label, help, valueClassName = 'text-2xl font-bold',
+}) => {
+  const [open, setOpen] = useState(false);
+  const panelId = `metric-help-${label.toLowerCase().replace(/\s+/g, '-')}`;
+
+  return (
+    <div className="fet-card flex flex-col p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <Icon size={24} className="shrink-0 text-primary" />
+          <div className="min-w-0">
+            <p className={`${valueClassName} text-text-primary`}>{value}</p>
+            <p className="text-xs text-text-secondary">{label}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen((valueOpen) => !valueOpen)}
+          aria-expanded={open}
+          aria-controls={panelId}
+          aria-label={`${open ? 'Hide' : 'Show'} details about ${label}`}
+          className="group -mr-1 -mt-1 inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-[11.5px] font-semibold text-primary transition-colors hover:bg-primary-light focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        >
+          {open ? 'Less info' : 'More info'}
+          <ArrowRight
+            size={13}
+            className={`transition-transform duration-200 ${open ? 'rotate-90' : 'group-hover:translate-x-0.5'}`}
+          />
+        </button>
+      </div>
+
+      <div
+        id={panelId}
+        aria-hidden={!open}
+        className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+          open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+        }`}
+      >
+        <div className="overflow-hidden">
+          <p className="mt-4 border-t border-border-default pt-3 text-[12px] leading-relaxed text-text-secondary">
+            {help}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ---------------------------- STUDENT VIEW ---------------------------- */
 const StudentAttendance = ({ user }) => {
   const [station, setStation] = useState(null);
@@ -228,56 +276,26 @@ const StudentAttendance = ({ user }) => {
       </div>
 
       {points && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="fet-card p-5">
-            <div className="flex items-center gap-3">
-              <Award size={24} className="text-primary" />
-              <div>
-                <p className="text-2xl font-bold text-text-primary">{points.total_points}</p>
-                <p className="flex items-center gap-1.5 text-xs text-text-secondary">
-                  Total points
-                  <InfoTip
-                    label="What Total points means"
-                    text="Points earned from consistent lecture attendance and active participation."
-                  />
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="fet-card p-5">
-            <div className="flex items-center gap-3">
-              <CreditCard size={24} className="text-primary" />
-              <div>
-                <p className="text-sm font-semibold text-text-primary">
-                  {points.is_special_day ? `x${points.special_day_multiplier} (birthday!)` : 'x1'}
-                </p>
-                <p className="flex items-center gap-1.5 text-xs text-text-secondary">
-                  Multiplier today
-                  <InfoTip
-                    label="What Multiplier today means"
-                    text="Doubles every attendance point earned on your birthday. It is x1 on all other days."
-                  />
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="fet-card p-5">
-            <div className="flex items-center gap-3">
-              <Calendar size={24} className="text-primary" />
-              <div>
-                <p className="text-sm font-semibold text-text-primary">
-                  {history.filter((r) => r.status === 'PRESENT' || r.status === 'LATE').length}
-                </p>
-                <p className="flex items-center gap-1.5 text-xs text-text-secondary">
-                  Sessions attended
-                  <InfoTip
-                    label="What Sessions attended means"
-                    text="Total number of valid check-ins recorded across all enrolled courses."
-                  />
-                </p>
-              </div>
-            </div>
-          </div>
+        <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-3">
+          <AttendanceMetricCard
+            icon={Award}
+            value={points.total_points}
+            label="Total points"
+            help="Earn points when your attendance is confirmed: 4 points for a check-in scan, 5 when you are picked as a class station, and 10 when you are named Student of the Class. Your total is the sum of all points earned across your courses."
+          />
+          <AttendanceMetricCard
+            icon={CreditCard}
+            value={points.is_special_day ? `x${points.special_day_multiplier} (birthday!)` : 'x1'}
+            valueClassName="text-base font-semibold"
+            label="Multiplier today"
+            help="Your multiplier applies to points earned today. It is x1 normally and rises on special days such as your birthday, when every attendance award is doubled. Past points are never recalculated."
+          />
+          <AttendanceMetricCard
+            icon={Calendar}
+            value={history.filter((r) => r.status === 'PRESENT' || r.status === 'LATE').length}
+            label="Sessions attended"
+            help="Counts the attendance sessions where you have a valid check-in marked PRESENT or LATE across all enrolled courses. It counts sessions, not scans, so extra QR scans do not inflate it."
+          />
         </div>
       )}
 
