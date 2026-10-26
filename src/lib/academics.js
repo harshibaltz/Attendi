@@ -32,6 +32,9 @@ export const academicsApi = {
   lecturers: () => toData(api.get('/users/?role=LECTURER')),
   assignLecturer: (offeringId, lecturerId) =>
     toData(api.patch(`/course-offerings/${offeringId}/`, { lecturer: lecturerId || null })),
+  // Lead lecturer, optional co-lecturer and the departments that may register.
+  updateOffering: (offeringId, data) =>
+    toData(api.patch(`/course-offerings/${offeringId}/`, data)),
 
   // --- weekly timetable ---
   schedules: (offeringId) => toData(api.get(`/course-offerings/${offeringId}/schedules/`)),
