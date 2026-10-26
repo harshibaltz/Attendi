@@ -25,6 +25,7 @@ const MyCourses = ({ user }) => {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
   const [created, setCreated] = useState(null);
+  const [courseQuery, setCourseQuery] = useState('');
   const [droppingId, setDroppingId] = useState(null);
   const [pendingDropCourse, setPendingDropCourse] = useState(null);
 
@@ -33,6 +34,7 @@ const MyCourses = ({ user }) => {
     setCreateError('');
     setCreated(null);
     setSelectedCourse('');
+    setCourseQuery('');
     setAvailable(null);
     try {
       const data = await learningApi.availableClassroomCourses();
@@ -61,7 +63,17 @@ const MyCourses = ({ user }) => {
     }
   };
 
-  const selected = available?.courses?.find((c) => c.course_id === selectedCourse);
+  // Courses that already have a classroom this semester are not selectable:
+  // they are already open, so hide them from the "create" list entirely.
+  const selectableCourses = (available?.courses || []).filter((c) => !c.existing_classroom);
+  const courseTerm = courseQuery.trim().toLowerCase();
+  const modalCourses = courseTerm
+    ? selectableCourses.filter((c) => (
+      (c.course_code || '').toLowerCase().includes(courseTerm)
+      || (c.course_title || '').toLowerCase().includes(courseTerm)
+    ))
+    : selectableCourses;
+  const selected = selectableCourses.find((c) => c.course_id === selectedCourse);
 
   useEffect(() => {
     let cancelled = false;
@@ -380,50 +392,56 @@ const MyCourses = ({ user }) => {
                       <div className="flex items-center gap-2 text-text-secondary text-sm py-3">
                         <Loader2 size={16} className="animate-spin" /> Loading your courses...
                       </div>
-                    ) : available.courses.length === 0 ? (
+                    ) : selectableCourses.length === 0 ? (
                       <p className="text-sm text-text-secondary py-3">
-                        You have no courses assigned yet. Ask your department admin to assign you a course.
+                        {available.courses?.length
+                          ? 'Every course in your department already has a classroom open this semester.'
+                          : 'You have no courses assigned yet. Ask your department admin to assign you a course.'}
                       </p>
                     ) : (
-                      <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                        {available.courses.map((c) => {
-                          const taken = !!c.existing_classroom;
-                          return (
-                            <button
-                              key={c.course_id}
-                              disabled={taken}
-                              onClick={() => setSelectedCourse(c.course_id)}
-                              className={`w-full text-left p-3 rounded-xl border transition-colors ${
-                                taken
-                                  ? 'opacity-50 cursor-not-allowed border-border-default'
-                                  : selectedCourse === c.course_id
+                      <div className="space-y-2">
+                        <div className="relative">
+                          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                          <input
+                            type="text"
+                            value={courseQuery}
+                            onChange={(e) => setCourseQuery(e.target.value)}
+                            placeholder="Search course code or title"
+                            aria-label="Search courses"
+                            className="fet-input pl-9"
+                          />
+                        </div>
+                        {modalCourses.length === 0 ? (
+                          <p className="text-sm text-text-secondary py-3">
+                            No course matches that search.
+                          </p>
+                        ) : (
+                          <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                            {modalCourses.map((c) => (
+                              <button
+                                key={c.course_id}
+                                onClick={() => setSelectedCourse(c.course_id)}
+                                className={`w-full text-left p-3 rounded-xl border transition-colors ${
+                                  selectedCourse === c.course_id
                                     ? 'border-primary bg-primary/5'
                                     : 'border-border-default hover:border-primary'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="font-semibold text-text-primary text-sm">
-                                  {c.course_code} — {c.course_title}
-                                </span>
-                                {taken ? (
-                                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-page-bg text-text-secondary shrink-0">
-                                    Already open
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-semibold text-text-primary text-sm">
+                                    {c.course_code} — {c.course_title}
                                   </span>
-                                ) : (
                                   <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
                                     {c.cohort_size} student{c.cohort_size === 1 ? '' : 's'}
                                   </span>
-                                )}
-                              </div>
-                              <p className="text-xs text-text-secondary mt-0.5">
-                                Level {c.level || '—'} · {c.credit_units} units
-                                {taken && c.existing_classroom?.lecturer_name
-                                  ? ` · taught by ${c.existing_classroom.lecturer_name}`
-                                  : ''}
-                              </p>
-                            </button>
-                          );
-                        })}
+                                </div>
+                                <p className="text-xs text-text-secondary mt-0.5">
+                                  Level {c.level || '—'} · {c.credit_units} units
+                                </p>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

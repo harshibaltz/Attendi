@@ -4,6 +4,8 @@ import attendanceApi from '../../lib/attendance';
 import { X, Users, QrCode, ChevronRight, Loader2, AlertCircle } from 'lucide-react';
 
 const DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+// Keep in step with ATTENDANCE_SESSION_MAX_SECONDS on the backend (10800s).
+const MAX_WINDOW_MINUTES = 180;
 
 const AttendanceSession = ({ onClose, onCreated }) => {
   const [step, setStep] = useState(1);
@@ -15,7 +17,7 @@ const AttendanceSession = ({ onClose, onCreated }) => {
     offeringId: '',
     scheduleId: '',
     mode: 'PROJECTOR',
-    windowMinutes: 5,
+    windowMinutes: '5',
     expectedHeadcount: '',
   });
 
@@ -45,12 +47,16 @@ const AttendanceSession = ({ onClose, onCreated }) => {
     setStarting(true);
     setError('');
     try {
+      const minutes = Number(formData.windowMinutes);
+      const windowMinutes = Number.isFinite(minutes) && minutes >= 1
+        ? Math.min(minutes, MAX_WINDOW_MINUTES)
+        : 5;
       const payload = {
         offering_id: formData.offeringId,
         mode: formData.mode,
         // How long attendance stays OPEN (minutes chosen by the lecturer).
         // The QR token TTL is a separate, server-side security setting.
-        duration_seconds: Math.max(60, Math.round(Number(formData.windowMinutes || 5) * 60)),
+        duration_seconds: Math.round(windowMinutes * 60),
       };
       if (formData.scheduleId) payload.schedule_id = formData.scheduleId;
       if (formData.expectedHeadcount) payload.expected_headcount = Number(formData.expectedHeadcount);
@@ -214,13 +220,24 @@ const AttendanceSession = ({ onClose, onCreated }) => {
                   <input
                     type="number"
                     min={1}
-                    max={10}
+                    max={MAX_WINDOW_MINUTES}
+                    inputMode="numeric"
                     value={formData.windowMinutes}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, windowMinutes: Number(e.target.value) }))}
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/[^\d]/g, '');
+                      setFormData((prev) => ({ ...prev, windowMinutes: value }));
+                    }}
+                    onBlur={() => {
+                      setFormData((prev) => {
+                        const minutes = Number(prev.windowMinutes);
+                        if (!Number.isFinite(minutes) || minutes < 1) return { ...prev, windowMinutes: '5' };
+                        return { ...prev, windowMinutes: String(Math.min(minutes, MAX_WINDOW_MINUTES)) };
+                      });
+                    }}
                     className="fet-input"
                   />
                   <p className="text-xs text-text-secondary mt-1">
-                    How long attendance stays open for students to scan.
+                    How long attendance stays open for students to scan (up to {MAX_WINDOW_MINUTES} minutes).
                   </p>
                   <p className="text-[11px] text-text-secondary mt-1">
                     The QR code itself refreshes every 10s for security &mdash; separate, and automatic.
