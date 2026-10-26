@@ -53,8 +53,11 @@ let refreshInFlight = null;
 
 const refreshSession = () => {
   if (!refreshInFlight) {
-    refreshInFlight = axios
-      .post(`${API_BASE}/api/v1/auth/refresh/`, null, { withCredentials: true })
+    // Use the configured client so the Django CSRF cookie is sent as
+    // X-CSRFToken. The backend now enforces CSRF on refresh-cookie requests;
+    // a bare axios call would receive 403 and sign the user out.
+    refreshInFlight = api
+      .post('/auth/refresh/')
       .finally(() => {
         refreshInFlight = null;
       });
