@@ -15,6 +15,7 @@ const TYPE_TONE = {
   ANNOUNCEMENT: 'Announcement',
   ENROLLMENT: 'Enrollment',
   CARRY_OVER: 'Carry-over',
+  PLATFORM_UPDATE: 'Platform Update',
 };
 
 const Header = ({ user, onLogout }) => {

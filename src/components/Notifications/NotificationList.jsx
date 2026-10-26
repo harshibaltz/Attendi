@@ -12,6 +12,7 @@ const TONE = {
   ANNOUNCEMENT: 'in',
   ENROLLMENT: 'ok',
   CARRY_OVER: 'warn',
+  PLATFORM_UPDATE: 'hub',
 };
 
 const NotificationList = () => {

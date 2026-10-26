@@ -43,6 +43,7 @@ const ADMIN_ONLY = [
   { path: '/admin/roster', icon: Upload, label: 'Roster upload', area: 'hub' },
   { path: '/admin/users', icon: Users, label: 'Users', area: 'hub' },
   { path: '/admin/academic', icon: Building2, label: 'Academic setup', area: 'hub' },
+  { path: '/admin/support', icon: Bell, label: 'Customer messages', area: 'hub' },
 ];
 
 /** An item with `roles` only shows for those roles; without it, it shows for all. */

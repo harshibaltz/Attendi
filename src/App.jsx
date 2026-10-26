@@ -15,6 +15,8 @@ import OtpVerification from './components/Auth/OtpVerification';
 import ResetPassword from './components/Auth/ResetPassword';
 import ChangePassword from './components/Auth/ChangePassword';
 import ProfilePage from './components/Profile/ProfilePage';
+import Settings from './Pages/Settings/Settings';
+import AdminSupportMessages from './Pages/Admin/SupportMessages';
 import AttendanceDashboard from './components/Attendance/AttendanceDashboard';
 import SessionDetail from './components/Attendance/SessionDetail';
 import ProjectsList from './components/Projects/ProjectsList';
@@ -288,7 +290,7 @@ function App() {
                 />
                 <Route path="/academic" element={<AcademicCalendar />} />
                 <Route path="/mobile-simulator" element={<MobileSimulator />} />
-                <Route path="/settings" element={<ProfilePage user={user} />} />
+                <Route path="/settings" element={<Settings user={user} />} />
                 <Route
                   path="/admin/dashboard"
                   element={<RequireRole role="admin"><AdminDashboard user={user} /></RequireRole>}
@@ -300,6 +302,10 @@ function App() {
                 <Route
                   path="/admin/roster"
                   element={<RequireRole role="admin"><RosterUpload /></RequireRole>}
+                />
+                <Route
+                  path="/admin/support"
+                  element={<RequireRole role="admin"><AdminSupportMessages /></RequireRole>}
                 />
                 <Route
                   path="/change-password"
