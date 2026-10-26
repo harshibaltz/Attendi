@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Mail, Lock, Eye, EyeOff, User, UserPlus, ArrowLeft, Building, GraduationCap, BookOpen, BadgeCheck, ChevronDown } from 'lucide-react';
 import { authApi } from '../../lib/auth';
 import { academicsApi } from '../../lib/academics';
+import { getDisplayName, normalizeUser } from '../../lib/profile';
 
 const normalizeFullName = (value) => {
   const trimmed = (value || '').trim();
@@ -193,11 +194,33 @@ const SignUp = ({ onSignUp, onSwitchToLogin }) => {
 
     try {
       const response = await authApi.selfRegister(payload);
-      setSuccess(response.data?.message || 'Account created successfully. Please sign in.');
-      setTimeout(() => {
+      const created = normalizeUser(
+        response.data?.data ?? response.data ?? {
+          ...payload,
+          full_name: `${first_name} ${last_name}`.trim(),
+        }
+      );
+
+      // Registration now starts a real cookie session. Verify the browser kept
+      // it before entering the app, exactly like the login flow does.
+      try {
+        const me = await authApi.me();
+        const verified = me.data?.data ?? me.data;
+        if (!verified) throw new Error('empty session');
+        created.role = verified.role || created.role;
+        created.fullName = getDisplayName(verified, '') || created.fullName;
+      } catch {
         setIsLoading(false);
-        onSwitchToLogin();
-      }, 1200);
+        setError(
+          'Your account was created, but the session could not be started. ' +
+            'Please sign in with your new credentials.'
+        );
+        return;
+      }
+
+      setIsLoading(false);
+      setSuccess('Account created. Taking you to your dashboard...');
+      onSignUp(created);
     } catch (err) {
       setIsLoading(false);
       const message = formatServerError(err.response?.data || err.message);

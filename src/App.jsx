@@ -35,7 +35,7 @@ import MobileSimulator from './components/Mobile/MobileSimulator';
 import MyCourses from './Pages/Lessons/MyCourses';
 import CourseDetail from './Pages/Lessons/CourseDetail';
 import { authApi } from './lib/auth';
-import { normalizeRole } from './lib/profile';
+import { getDisplayName, normalizeRole, normalizeUser } from './lib/profile';
 
 const RequireRole = ({ role, children }) => {
   let userRole = 'student';
@@ -96,14 +96,14 @@ function App() {
       try {
         // Session is validated against the backend using httpOnly cookies.
         const response = await authApi.me();
-        const userData = response.data?.data ?? response.data;
+        const userData = normalizeUser(response.data?.data ?? response.data);
         setUser(userData);
         setIsAuthenticated(true);
         // Update cached user snapshot
         localStorage.setItem('fet_auth', 'true');
         localStorage.setItem('fet_user', JSON.stringify(userData));
         localStorage.setItem('fet_user_role', userData.role || 'student');
-        localStorage.setItem('fet_user_name', userData.fullName || userData.email?.split('@')[0] || 'User');
+        localStorage.setItem('fet_user_name', getDisplayName(userData, 'User'));
       } catch (error) {
         // No valid session (or refresh failed) — clear cache, show login.
         localStorage.removeItem('fet_auth');
@@ -120,7 +120,7 @@ function App() {
     const onProfileUpdate = () => {
       try {
         const u = JSON.parse(localStorage.getItem('fet_user') || '{}');
-        if (u && u.fullName) setUser(u);
+        if (u) setUser(normalizeUser(u));
       } catch { /* ignore */ }
     };
     const onSessionExpired = () => {
@@ -138,12 +138,16 @@ function App() {
   }, []);
 
   const handleLogin = (userData) => {
+    const normalized = normalizeUser(userData);
     setIsAuthenticated(true);
-    setUser(userData);
+    setUser(normalized);
+    setShowSignUp(false);
     localStorage.setItem('fet_auth', 'true');
-    localStorage.setItem('fet_user', JSON.stringify(userData));
-    localStorage.setItem('fet_user_role', userData.role || 'student');
-    localStorage.setItem('fet_user_name', userData.fullName || userData.email?.split('@')[0] || 'User');
+    localStorage.setItem('fet_user', JSON.stringify(normalized));
+    localStorage.setItem('fet_user_role', normalized.role || 'student');
+    localStorage.setItem('fet_user_name', getDisplayName(normalized, 'User'));
+    // The authenticated shell always opens on the role-aware dashboard.
+    window.history.replaceState({}, '', '/');
   };
 
   const handleLogout = async () => {
@@ -236,7 +240,7 @@ function App() {
     );
   }
 
-  const userName = user?.fullName || user?.email?.split('@')[0] || 'User';
+  const userName = getDisplayName(user, 'User');
   const userRole = user?.role || 'student';
 
   // BR-003: a roster-created account signs in with a temporary password and

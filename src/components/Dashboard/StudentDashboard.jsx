@@ -11,6 +11,7 @@ import { notificationsApi } from '../../lib/notifications';
 import { learningApi } from '../../lib/learning';
 import { errorMessage } from '../../lib/enrollment';
 import { formatDate, formatClock, relativeTime } from '../../lib/format';
+import { getDisplayName } from '../../lib/profile';
 
 const EMPTY = {
   stats: { enrolled_courses: 0, attendance_rate: '0%', active_projects: 0, pending_tasks: 0 },
@@ -69,7 +70,7 @@ const StudentDashboard = ({ user }) => {
 
   useEffect(() => { load(); }, [load]);
 
-  const studentName = user?.fullName || 'Student';
+  const studentName = getDisplayName(user, 'Student');
   const rate = Number(String(data.stats.attendance_rate || '0').replace('%', '')) || 0;
 
   const statCards = [
