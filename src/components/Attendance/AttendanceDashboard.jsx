@@ -371,6 +371,7 @@ const LecturerAttendance = () => {
   const [rosterError, setRosterError] = useState('');
   const [correctingRecord, setCorrectingRecord] = useState(null);
   const [correctionStatus, setCorrectionStatus] = useState('PRESENT');
+  const [recordsExportFormat, setRecordsExportFormat] = useState('csv');
   const [flash, setFlash] = useState('');
   // One live-status request per session at a time: slow responses must not
   // stack up and land out of order (which made Present counts jump around).
@@ -441,7 +442,7 @@ const LecturerAttendance = () => {
         if (first?.token) {
           setProjectorToken(first.token);
           setProjectorError('');
-          setProjectorExpiresIn(data.expires_in_seconds || 10);
+          setProjectorExpiresIn(data.expires_in_seconds || 5);
         } else {
           setProjectorError('The server returned no QR code. Try starting the session again.');
         }
@@ -965,7 +966,96 @@ const LecturerAttendance = () => {
               <div><span className="font-semibold">Status:</span> {selectedSession.status}</div>
             </div>
 
-            <h4 className="font-semibold text-text-primary mb-2">Attendance Records ({records[selectedSession.id]?.length || 0})</h4>
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="font-semibold text-text-primary">Attendance Records ({records[selectedSession.id]?.length || 0})</h4>
+              {(records[selectedSession.id]?.length || 0) > 0 && (
+                <div className="flex items-center gap-2">
+                  <select
+                    value={recordsExportFormat}
+                    onChange={(e) => setRecordsExportFormat(e.target.value)}
+                    className="fet-select h-8 text-xs"
+                  >
+                    <option value="csv">CSV</option>
+                    <option value="pdf">PDF</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const recs = records[selectedSession.id] || [];
+                      if (recordsExportFormat === 'csv') {
+                        const head = ['Student Name', 'Email', 'Status', 'Method', 'Time'];
+                        const rows = recs.map((r) => [
+                          r.student_name || '',
+                          r.student_email || '',
+                          r.status || '',
+                          r.verification_method || '',
+                          r.recorded_at ? new Date(r.recorded_at).toLocaleString() : '',
+                        ]);
+                        const csv = [head, ...rows]
+                          .map((cols) => cols.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
+                          .join('\n');
+                        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `${selectedSession.course_code || 'session'}-${selectedSession.class_name || 'attendance'}.csv`.replace(/\s+/g, '-');
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      } else {
+                        const printWindow = window.open('', '_blank');
+                        if (!printWindow) return;
+                        const title = `${selectedSession.course_code || ''} - ${selectedSession.class_name || ''} Attendance`;
+                        const rows = recs.map((r) => `
+                          <tr>
+                            <td>${(r.student_name || '').replace(/</g, '&lt;')}</td>
+                            <td>${(r.student_email || '').replace(/</g, '&lt;')}</td>
+                            <td>${(r.status || '').replace(/</g, '&lt;')}</td>
+                            <td>${(r.verification_method || '').replace(/</g, '&lt;')}</td>
+                            <td>${r.recorded_at ? new Date(r.recorded_at).toLocaleString() : ''}</td>
+                          </tr>
+                        `).join('');
+                        printWindow.document.write(`
+                          <html>
+                            <head>
+                              <title>${title}</title>
+                              <style>
+                                body { font-family: Arial, sans-serif; padding: 20px; }
+                                h1 { font-size: 18px; margin-bottom: 10px; }
+                                h2 { font-size: 14px; margin: 5px 0 20px; color: #666; }
+                                table { width: 100%; border-collapse: collapse; font-size: 12px; }
+                                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                                th { background-color: #f5f5f5; }
+                              </style>
+                            </head>
+                            <body>
+                              <h1>${title.replace(/</g, '&lt;')}</h1>
+                              <table>
+                                <thead>
+                                  <tr>
+                                    <th>Student</th>
+                                    <th>Email</th>
+                                    <th>Status</th>
+                                    <th>Method</th>
+                                    <th>Time</th>
+                                  </tr>
+                                </thead>
+                                <tbody>${rows}</tbody>
+                              </table>
+                            </body>
+                          </html>
+                        `);
+                        printWindow.document.close();
+                        printWindow.focus();
+                        setTimeout(() => { printWindow.print(); printWindow.close(); }, 250);
+                      }
+                    }}
+                    className="fet-btn-secondary h-8 text-xs"
+                  >
+                    <Download size={14} /> Download
+                  </button>
+                </div>
+              )}
+            </div>
             <div className="overflow-x-auto">
               <table className="fet-table">
                 <thead>

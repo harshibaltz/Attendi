@@ -3,7 +3,7 @@ import { RefreshCw, Clock, Users, Loader2 } from 'lucide-react';
 import attendanceApi from '../../lib/attendance';
 import QRCodeDisplay from './QRCode';
 
-const REFRESH_MS = 9000;
+const REFRESH_MS = 4500;
 
 const StationQR = ({ sessionId, station }) => {
   const [timeLeft, setTimeLeft] = useState(0);
@@ -23,7 +23,7 @@ const StationQR = ({ sessionId, station }) => {
     try {
       const data = await attendanceApi.myStationToken(sessionId);
       setToken(data.token);
-      setTimeLeft(data.expires_in_seconds || 10);
+      setTimeLeft(data.expires_in_seconds || 5);
       setScanStats({
         scans_at_station: data.scans_at_station,
         scans_remaining: data.scans_remaining,

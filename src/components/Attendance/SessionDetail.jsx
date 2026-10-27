@@ -76,6 +76,58 @@ const SessionDetail = () => {
     URL.revokeObjectURL(url);
   };
 
+  const exportPdf = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    const title = `${session?.course_code || ''} ${session?.course_title || session?.class_name || 'Attendance'} - ${formatDateTime(session?.started_at) || ''}`;
+    const rows = records.map((r) => `
+      <tr>
+        <td>${(r.student_name || '').replace(/</g, '&lt;')}</td>
+        <td>${(r.student_number || '').replace(/</g, '&lt;')}</td>
+        <td>${r.recorded_at ? formatDateTime(r.recorded_at) : ''}</td>
+        <td>${(r.department || '').replace(/</g, '&lt;')}</td>
+        <td>${(r.level || '').replace(/</g, '&lt;')}</td>
+        <td>${(r.status || '').replace(/</g, '&lt;')}</td>
+      </tr>
+    `).join('');
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            h1 { font-size: 18px; margin-bottom: 10px; }
+            h2 { font-size: 14px; margin: 5px 0 20px; color: #666; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f5f5f5; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+          </style>
+        </head>
+        <body>
+          <h1>${(session?.course_code || '').replace(/</g, '&lt;')} - ${ (session?.course_title || session?.class_name || '').replace(/</g, '&lt;') }</h1>
+          <h2>Session: ${formatDateTime(session?.started_at) || ''} | Present: ${session?.present || 0}/${session?.total_eligible || 0} | Mode: ${session?.mode || ''}</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Student Name</th>
+                <th>Matricule</th>
+                <th>Date / Timestamp</th>
+                <th>Department</th>
+                <th>Level</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => { printWindow.print(); printWindow.close(); }, 250);
+  };
+
   return (
     <div className="space-y-5">
       <SectionHeader
@@ -147,14 +199,24 @@ const SessionDetail = () => {
       {!loading && session ? (
         <Card accent="attendance">
           <CardHead title={`Checked-in students (${records.length})`}>
-            <button
-              type="button"
-              onClick={exportCsv}
-              className="fet-btn-secondary"
-              disabled={records.length === 0}
-            >
-              <Download size={14} /> Export CSV
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={exportCsv}
+                className="fet-btn-secondary"
+                disabled={records.length === 0}
+              >
+                <Download size={14} /> Export CSV
+              </button>
+              <button
+                type="button"
+                onClick={exportPdf}
+                className="fet-btn-secondary"
+                disabled={records.length === 0}
+              >
+                <Download size={14} /> Export PDF
+              </button>
+            </div>
           </CardHead>
           <CardBody>
             {records.length === 0 ? (
