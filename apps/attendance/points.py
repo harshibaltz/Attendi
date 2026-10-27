@@ -233,6 +233,7 @@ def award_station_points(attendance_session: AttendanceSession, checkpoint: Atte
     attendance_session = AttendanceSession.objects.select_for_update().get(id=attendance_session.id)
     if checkpoint.student.role != "STUDENT":
         return
+    is_student_station = checkpoint.student.role == "STUDENT"
     is_auto = checkpoint.selection_method in {
         AttendanceCheckpoint.SelectionMethod.AUTO,
         AttendanceCheckpoint.SelectionMethod.SCAN,

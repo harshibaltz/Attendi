@@ -87,14 +87,9 @@ def record_v2_scan(
             return reject("TOKEN_INVALID", "Invalid QR code.")
         if offline and checkpoint.created_at >= slot_end:
             return reject("CAPTURE_WINDOW_EXPIRED", "The station was not active in that QR slot.")
-        is_auto_station = (
-            checkpoint.student.role == "STUDENT"
-            and checkpoint.selection_method in {
-                AttendanceCheckpoint.SelectionMethod.AUTO,
-                AttendanceCheckpoint.SelectionMethod.SCAN,
-            }
-        )
-        if is_auto_station:
+        is_station = checkpoint.student.role == "STUDENT"
+        is_capped_station = is_station
+        if is_capped_station:
             scans_served = AttendanceRecord.objects.filter(
                 checkpoint=checkpoint,
                 verification_method=AttendanceRecord.VerificationMethod.QR_SCAN,
@@ -102,7 +97,7 @@ def record_v2_scan(
             if scans_served >= SCANS_PER_STATION:
                 return reject(
                     "STATION_FULL",
-                    f"This auto-selected station already served {SCANS_PER_STATION} classmates.",
+                    f"This station already served {SCANS_PER_STATION} classmates.",
                     409,
                 )
     else:
@@ -141,7 +136,7 @@ def record_v2_scan(
     award_scan_points(session, student, checkpoint=checkpoint, when=slot_start if offline else now)
     if checkpoint and checkpoint.student.role == "STUDENT":
         award_station_points(session, checkpoint, when=slot_start if offline else now)
-        if is_auto_station and scans_served + 1 == SCANS_PER_STATION:
+        if is_capped_station and scans_served + 1 == SCANS_PER_STATION:
             Notification.objects.create(
                 user=checkpoint.student,
                 type="ATTENDANCE",

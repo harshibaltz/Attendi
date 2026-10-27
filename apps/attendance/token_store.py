@@ -358,15 +358,12 @@ def validate_and_record_scan(token: str, requesting_user) -> dict:
             if checkpoint is None:
                 return {"success": False, "error_code": "TOKEN_INVALID", "message": "Invalid QR code.", "http_status": 400}
 
-        is_auto_station = (
+        is_station = (
             checkpoint is not None
             and checkpoint.student.role == "STUDENT"
-            and checkpoint.selection_method in {
-                AttendanceCheckpoint.SelectionMethod.AUTO,
-                AttendanceCheckpoint.SelectionMethod.SCAN,
-            }
         )
-        if is_auto_station:
+        is_capped_station = is_station
+        if is_capped_station:
             scans_served = AttendanceRecord.objects.filter(
                 checkpoint=checkpoint, verification_method=AttendanceRecord.VerificationMethod.QR_SCAN
             ).count()
@@ -374,7 +371,7 @@ def validate_and_record_scan(token: str, requesting_user) -> dict:
                 return {
                     "success": False,
                     "error_code": "STATION_FULL",
-                    "message": f"This auto-selected station already served {SCANS_PER_STATION} classmates. Please scan another station or the projector.",
+                    "message": f"This station already served {SCANS_PER_STATION} classmates. Please scan another station or the projector.",
                     "http_status": 409,
                 }
 
@@ -392,8 +389,8 @@ def validate_and_record_scan(token: str, requesting_user) -> dict:
         is_student_station = checkpoint is not None and checkpoint.student.role == "STUDENT"
         if is_student_station:
             award_station_points(session, checkpoint)
-            # Notify when an auto station reaches its scan cap.
-            if is_auto_station:
+            # Notify when a station reaches its scan cap.
+            if is_capped_station:
                 served_now = AttendanceRecord.objects.filter(
                     checkpoint=checkpoint, verification_method=AttendanceRecord.VerificationMethod.QR_SCAN
                 ).count()
