@@ -88,7 +88,10 @@ def record_v2_scan(
         if offline and checkpoint.created_at >= slot_end:
             return reject("CAPTURE_WINDOW_EXPIRED", "The station was not active in that QR slot.")
         is_station = checkpoint.student.role == "STUDENT"
-        is_capped_station = is_station
+        is_capped_station = is_station and checkpoint.selection_method in {
+            AttendanceCheckpoint.SelectionMethod.AUTO,
+            AttendanceCheckpoint.SelectionMethod.SCAN,
+        }
         if is_capped_station:
             scans_served = AttendanceRecord.objects.filter(
                 checkpoint=checkpoint,

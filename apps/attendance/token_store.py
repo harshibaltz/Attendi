@@ -362,7 +362,10 @@ def validate_and_record_scan(token: str, requesting_user) -> dict:
             checkpoint is not None
             and checkpoint.student.role == "STUDENT"
         )
-        is_capped_station = is_station
+        is_capped_station = is_station and checkpoint.selection_method in {
+            AttendanceCheckpoint.SelectionMethod.AUTO,
+            AttendanceCheckpoint.SelectionMethod.SCAN,
+        }
         if is_capped_station:
             scans_served = AttendanceRecord.objects.filter(
                 checkpoint=checkpoint, verification_method=AttendanceRecord.VerificationMethod.QR_SCAN
