@@ -325,7 +325,7 @@ class AutoSelectStationsView(APIView):
             "selected": AttendanceCheckpointSerializer(created, many=True).data,
             "total_stations": session.checkpoints.count(),
             "auto_stations_remaining": max_stations - session.checkpoints.filter(selection_method="AUTO").count(),
-            "scans_per_station": getattr(settings, "ATTENDANCE_SCANS_PER_STATION", 3),
+            "scans_per_station": getattr(settings, "ATTENDANCE_SCANS_PER_STATION", 2),
         }, status=status.HTTP_201_CREATED)
 
 

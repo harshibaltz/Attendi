@@ -34,7 +34,7 @@ SPECIAL_DAY_MULTIPLIER = getattr(settings, "ATTENDANCE_SPECIAL_DAY_MULTIPLIER", 
 # Auto-selection is capped: only 3 stations in the entire class per session.
 MAX_AUTO_STATIONS = getattr(settings, "ATTENDANCE_MAX_AUTO_STATIONS", 3)
 # Each station serves at most this many classmates (choose wisely!).
-SCANS_PER_STATION = getattr(settings, "ATTENDANCE_SCANS_PER_STATION", 3)
+SCANS_PER_STATION = getattr(settings, "ATTENDANCE_SCANS_PER_STATION", 2)
 
 
 def _notify_points(user, title, message, session=None, ntype="ATTENDANCE"):
@@ -152,7 +152,7 @@ def auto_select_stations(attendance_session: AttendanceSession, count: int = 3):
     Hard cap: only MAX_AUTO_STATIONS (3) auto-selected stations exist in
     the entire class per session. A picked student is marked present and
     receives their station points immediately, whether or not anyone scans
-    their QR. Their station serves the first SCANS_PER_STATION (3)
+    their QR. Their station serves the first SCANS_PER_STATION (2)
     classmates, who each earn bonus points - so they share the QR wisely,
     not just with their closest friends.
 
