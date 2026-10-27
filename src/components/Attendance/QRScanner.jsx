@@ -153,6 +153,7 @@ const QRScanner = ({ onClose, onScan }) => {
         });
         if (onScan) onScan({ success: true, record: data });
         stopCamera();
+        if (data?.station_qr?.token) onClose();
       } else {
         setError(data?.message || 'Scan failed.');
         if (onScan) onScan({ success: false });

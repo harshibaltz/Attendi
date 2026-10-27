@@ -338,7 +338,11 @@ const StudentAttendance = ({ user }) => {
         </div>
       </div>
 
-      {showScanner && <QRScanner onClose={() => setShowScanner(false)} onScan={() => load()} />}
+      {showScanner && <QRScanner onClose={() => setShowScanner(false)} onScan={({ success, record }) => {
+        if (!success) return;
+        if (record?.station_qr?.token) setStation(record.station_qr);
+        load();
+      }} />}
     </div>
   );
 };
