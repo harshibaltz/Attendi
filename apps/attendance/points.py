@@ -34,7 +34,7 @@ SPECIAL_DAY_MULTIPLIER = getattr(settings, "ATTENDANCE_SPECIAL_DAY_MULTIPLIER", 
 # Auto-selection is capped: only 3 stations in the entire class per session.
 MAX_AUTO_STATIONS = getattr(settings, "ATTENDANCE_MAX_AUTO_STATIONS", 3)
 # Each station serves at most this many classmates (choose wisely!).
-SCANS_PER_STATION = getattr(settings, "ATTENDANCE_SCANS_PER_STATION", 2)
+SCANS_PER_STATION = getattr(settings, "ATTENDANCE_SCANS_PER_STATION", 20)
 
 
 def _notify_points(user, title, message, session=None, ntype="ATTENDANCE"):

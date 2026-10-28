@@ -325,7 +325,7 @@ class AutoSelectStationsView(APIView):
             "selected": AttendanceCheckpointSerializer(created, many=True).data,
             "total_stations": session.checkpoints.count(),
             "auto_stations_remaining": max_stations - session.checkpoints.filter(selection_method="AUTO").count(),
-            "scans_per_station": getattr(settings, "ATTENDANCE_SCANS_PER_STATION", 2),
+            "scans_per_station": getattr(settings, "ATTENDANCE_SCANS_PER_STATION", 20),
         }, status=status.HTTP_201_CREATED)
 
 
@@ -965,7 +965,7 @@ class SessionRecordsView(APIView):
         sessions = AttendanceSession.objects.filter(class_session=cs)
         records = AttendanceRecord.objects.filter(attendance_session__in=sessions).select_related(
             "student", "student__student_profile", "student__student_profile__department"
-        )
+        ).order_by("student__last_name", "student__first_name")
         return Response(AttendanceRecordSerializer(records, many=True).data)
 
 

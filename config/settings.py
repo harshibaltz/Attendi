@@ -356,6 +356,7 @@ COOKIE_MAX_AGE_REFRESH = env_int("REFRESH_TOKEN_DAYS", 7) * 24 * 60 * 60
 
 # Attendance configuration (Business Rules BR-035 / BR-036 - configurable)
 ATTENDANCE_TOKEN_TTL_SECONDS = env_int("ATTENDANCE_TOKEN_TTL_SECONDS", 5)
+ATTENDANCE_SCANS_PER_STATION = env_int("ATTENDANCE_SCANS_PER_STATION", 20)
 ATTENDANCE_TOKEN_VERSION = env_int("ATTENDANCE_TOKEN_VERSION", 2)
 ATTENDANCE_TOKEN_HMAC_KEY = env("ATTENDANCE_TOKEN_HMAC_KEY", "") or (
     hashlib.sha256(f"fet-attendance-dev:{SECRET_KEY}".encode()).hexdigest() if DEBUG else ""
