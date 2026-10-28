@@ -34,6 +34,17 @@ const NotificationList = () => {
   }, [filter]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const id = setInterval(load, 30000);
+    const onFocus = () => load();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [load]);
 
   const unread = rows.filter((n) => !n.read_at).length;
 

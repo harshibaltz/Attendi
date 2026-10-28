@@ -75,9 +75,16 @@ const Sidebar = ({ onLogout, userName = 'User', userRole = 'student' }) => {
     load();
     const onRead = () => load();
     window.addEventListener('fet-notifications-changed', onRead);
+    const id = setInterval(load, 30000);
+    const onFocus = () => load();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
     return () => {
       cancelled = true;
       window.removeEventListener('fet-notifications-changed', onRead);
+      clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
     };
   }, []);
 

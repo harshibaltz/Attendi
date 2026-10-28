@@ -43,7 +43,16 @@ const Header = ({ user, onLogout }) => {
   useEffect(() => {
     const onChanged = () => loadNotifications();
     window.addEventListener('fet-notifications-changed', onChanged);
-    return () => window.removeEventListener('fet-notifications-changed', onChanged);
+    const id = setInterval(loadNotifications, 30000);
+    const onFocus = () => loadNotifications();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      window.removeEventListener('fet-notifications-changed', onChanged);
+      clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
   }, [loadNotifications]);
 
   useEffect(() => {
