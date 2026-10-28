@@ -6,7 +6,7 @@ import {
 import attendanceApi from '../../lib/attendance';
 import AddStudentsPanel from './AddStudentsPanel';
 import {
-  SectionHeader, Card, CardHead, CardBody, Pill, Tag, Callout, EmptyState,
+  SectionHeader, Card, CardHead, CardBody, Pill, Tag, Callout, EmptyState, SwipeScroller,
 } from '../UI';
 import { formatDateTime } from '../../lib/format';
 
@@ -319,7 +319,7 @@ const SessionDetail = () => {
                 subtitle="Nobody scanned in for this session."
               />
             ) : (
-              <div className="overflow-x-auto">
+              <SwipeScroller>
                 <table className="fet-table">
                   <thead>
                     <tr>
@@ -396,7 +396,7 @@ const SessionDetail = () => {
                     })()}
                   </tbody>
                 </table>
-              </div>
+              </SwipeScroller>
             )}
             {correctingRecord && (
               <div className="mt-4 p-4 border border-border-default rounded-xl bg-page-bg">

@@ -12,7 +12,7 @@ import StationQR from './StationQR';
 import AddStudentsPanel from './AddStudentsPanel';
 import QRCodeDisplay from './QRCode';
 import {
-  SectionHeader, Card, CardHead, CardBody, CardFoot, Eyebrow, Pill, Tag, Callout, EmptyState,
+  SectionHeader, Card, CardHead, CardBody, CardFoot, Eyebrow, Pill, Tag, Callout, EmptyState, SwipeScroller,
 } from '../UI';
 
 /** The searchable roster used when picking students to act as QR stations. */
@@ -304,7 +304,7 @@ const StudentAttendance = ({ user }) => {
         <div className="p-6 border-b border-border-default">
           <h3 className="text-lg font-semibold text-text-primary">Attendance History</h3>
         </div>
-        <div className="overflow-x-auto">
+        <SwipeScroller>
           {loading ? (
             <div className="flex justify-center py-10">
               <Loader2 size={28} className="animate-spin text-primary" />
@@ -336,7 +336,7 @@ const StudentAttendance = ({ user }) => {
           {!loading && history.length === 0 && (
             <div className="text-center py-8 text-text-secondary">No attendance records yet</div>
           )}
-        </div>
+        </SwipeScroller>
       </div>
 
       {showScanner && <QRScanner onClose={() => setShowScanner(false)} onScan={({ success, record }) => {
@@ -896,7 +896,29 @@ const LecturerAttendance = () => {
             <h3 className="text-lg font-semibold text-text-primary">History</h3>
             <p className="text-sm text-text-secondary">Sessions started in this browser since load. Full history is available on the backend.</p>
           </div>
-          <div className="overflow-x-auto">
+          <div className="divide-y divide-border-default sm:hidden">
+            {historySessions.map((session) => (
+              <div key={session.id} className="space-y-2 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[13.5px] font-semibold text-text-primary">{session.course_code}</span>
+                  <span className={getStatusColor(session.status)}>{session.status}</span>
+                </div>
+                <p className="text-[12px] text-text-secondary">{session.class_name}</p>
+                <div className="flex items-center justify-between text-[12px] text-text-secondary">
+                  <span>{fmtDate(session.started_at)}</span>
+                  <span>Present: <span className="font-semibold text-text-primary">{session.present ?? session.total_present ?? 0}</span></span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/attendance/sessions/${session.id}`)}
+                  className="fet-btn-secondary h-9 w-full justify-center text-xs"
+                >
+                  <Eye size={14} /> View list
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto sm:block">
             <table className="fet-table">
               <thead>
                 <tr>
@@ -1170,7 +1192,7 @@ const LecturerAttendance = () => {
               </div>
             )}
 
-            <div className="overflow-x-auto">
+            <SwipeScroller>
               <table className="fet-table">
                 <thead>
                   <tr>
@@ -1256,7 +1278,7 @@ const LecturerAttendance = () => {
                   })()}
                 </tbody>
               </table>
-            </div>
+            </SwipeScroller>
 
             {correctingRecord && (
               <div className="mt-4 p-4 border border-border-default rounded-xl bg-page-bg">

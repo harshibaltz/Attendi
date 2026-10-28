@@ -5,7 +5,7 @@
  * needs something that is not here, the right answer is usually to add it
  * here rather than to invent it locally.
  */
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AlertCircle } from 'lucide-react';
 
 /* ---------------------------------------------------------------- areas --- */
@@ -334,6 +334,54 @@ export function LiveBanner({ children }) {
   return (
     <div className="ui-live">
       <div className="ui-live-top">{children}</div>
+    </div>
+  );
+}
+
+/* --------------------------------------------------------------- scroll --- */
+
+/**
+ * Horizontal table wrapper with a visible "swipe" affordance.
+ *
+ * Wide registers overflow on phones, and a bare `overflow-x-auto` gives no
+ * hint that more columns exist. This shows a fading edge plus a small pill
+ * until the user reaches the last column, and hides both once they do.
+ */
+export function SwipeScroller({ children, className = '', label = 'Swipe for more' }) {
+  const ref = useRef(null);
+  const [canScroll, setCanScroll] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const update = () => {
+      setCanScroll(el.scrollWidth - el.clientWidth - el.scrollLeft > 12);
+    };
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    if (observer) observer.observe(el);
+    window.addEventListener('resize', update);
+    return () => {
+      el.removeEventListener('scroll', update);
+      if (observer) observer.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+
+  return (
+    <div className={`relative ${className}`.trim()}>
+      <div ref={ref} className="overflow-x-auto">
+        {children}
+      </div>
+      {canScroll ? (
+        <>
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-surface to-transparent" />
+          <div className="pointer-events-none absolute right-2 top-2 rounded-full bg-primary px-2 py-1 text-[10px] font-medium text-white shadow-sm">
+            {label} →
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }
