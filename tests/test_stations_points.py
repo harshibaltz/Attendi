@@ -45,10 +45,10 @@ def _put_token(session, checkpoint, token="tok"):
 
 @pytest.mark.django_db
 class TestQRRotation:
-    def test_token_expires_after_10s(self, class_session, lecturer_user, enrolled_student):
-        """BR-035: token TTL is 10 seconds."""
+    def test_token_expires_after_8s(self, class_session, lecturer_user, enrolled_student):
+        """BR-035: token TTL is 8 seconds."""
         from apps.attendance.token_store import TOKEN_TTL
-        assert TOKEN_TTL == 10
+        assert TOKEN_TTL == 8
 
     def test_rotation_generates_fresh_tokens_while_session_active(self, class_session, lecturer_user, enrolled_student):
         """BR-061/FR-043: each rotation produces a new token; old token
@@ -58,7 +58,7 @@ class TestQRRotation:
 
         # Rotation 1
         batch1 = generate_tokens_for_session(session)
-        assert batch1["expires_in_seconds"] == 10
+        assert batch1["expires_in_seconds"] == 8
         tok1 = batch1["tokens"][0]["token"]
 
         # Rotation 2 (10s later in real life) - new token, old one still valid until TTL
@@ -174,7 +174,7 @@ class TestAutoStationSelection:
         created = auto_select_stations(session, count=1)
         assert created
         n = Notification.objects.filter(user=created[0].student, title__icontains="station").latest("created_at")
-        assert "first 3" in n.message and "5 station points" in n.message and "4 pts" in n.message
+        assert "first 20" in n.message and "5 station points" in n.message and "4 pts" in n.message
 
     def test_auto_selected_station_is_present_and_paid_immediately(self, class_session, lecturer_user, enrolled_student):
         """Being picked as a station confirms attendance and pays 5 points
@@ -284,14 +284,14 @@ class TestTeacherStationAssignment:
 
 @pytest.mark.django_db
 class TestStationScanLimits:
-    def test_auto_station_serves_only_three_scanners(self, offering, class_session, lecturer_user, enrolled_student, cs_department, db):
-        """Auto-selected stations: exactly 3 scans; the 4th is rejected
-        with STATION_FULL. Scanners earn 4 pts."""
+    def test_auto_station_serves_up_to_twenty_scanners(self, offering, class_session, lecturer_user, enrolled_student, cs_department, db):
+        """Auto/scan stations: 20 scans; the 21st is rejected with
+        STATION_FULL. Scanners earn 4 pts."""
         from apps.academics.models import Enrollment
         from apps.accounts.models import StudentProfile, User as U
 
         scanners = []
-        for i in range(4):
+        for i in range(21):
             s = U.objects.create_user(email=f"scan{i}@test.edu", password="pass1234", first_name=f"S{i}", last_name="T", role="STUDENT")
             StudentProfile.objects.create(user=s, student_number=f"SCN{i:03d}", department=cs_department)
             Enrollment.objects.create(student=s, course_offering=offering)
@@ -308,12 +308,12 @@ class TestStationScanLimits:
             _put_token(session, cp, f"tok-{i}")
             results.append(validate_and_record_scan(f"tok-{i}", scanner))
 
-        assert all(r["success"] for r in results[:3])
-        assert results[3]["success"] is False
-        assert results[3]["error_code"] == "STATION_FULL"
+        assert all(r["success"] for r in results[:20])
+        assert results[20]["success"] is False
+        assert results[20]["error_code"] == "STATION_FULL"
 
-        # The three successful scanners earned STATION_SCAN 4 pts
-        for scanner in scanners[:3]:
+        # The twenty successful scanners earned STATION_SCAN 4 pts
+        for scanner in scanners[:20]:
             entry = PointsLedger.objects.get(student=scanner, attendance_session=session)
             assert entry.category == "STATION_SCAN" and entry.points == POINTS["STATION_SCAN"] == 4
 
@@ -325,7 +325,7 @@ class TestStationScanLimits:
 
     def test_teacher_selected_station_unlimited_scans(self, offering, class_session, lecturer_user, enrolled_student, cs_department, db):
         """Teacher-selected student stations have NO scan limit — only auto
-        stations are capped at 3."""
+        stations are capped at 20 scans."""
         from apps.academics.models import Enrollment
         from apps.accounts.models import StudentProfile, User as U
 

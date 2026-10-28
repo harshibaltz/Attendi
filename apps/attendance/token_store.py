@@ -24,7 +24,7 @@ from django.utils import timezone
 
 from .models import AttendanceCheckpoint, AttendanceRecord, AttendanceSession
 
-TOKEN_TTL = getattr(settings, "ATTENDANCE_TOKEN_TTL_SECONDS", 10)
+TOKEN_TTL = getattr(settings, "ATTENDANCE_TOKEN_TTL_SECONDS", 8)
 TOKEN_V2 = 2
 PROJECTOR_ID = UUID(int=0)
 TOKEN_HEADER = struct.Struct(">B16s16sII")
