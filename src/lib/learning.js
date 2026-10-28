@@ -50,6 +50,7 @@ export const learningApi = {
   // Assignments (teacher sets due date, late policy, submission limit).
   getAssignments: (offeringId) => toData(api.get(`/course-offerings/${offeringId}/assignments/`)),
   createAssignment: (offeringId, data) => toData(api.post(`/course-offerings/${offeringId}/assignments/`, data)),
+  updateAssignment: (assignmentId, data) => toData(api.patch(`/assignments/${assignmentId}/`, data)),
   deleteAssignment: (assignmentId) => api.delete(`/assignments/${assignmentId}/`),
   getSubmissions: (assignmentId) => toData(api.get(`/assignments/${assignmentId}/submissions/`)),
   submitAssignment: (assignmentId, data) => toData(api.post(`/assignments/${assignmentId}/submissions/`, data)),

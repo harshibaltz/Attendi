@@ -7,9 +7,9 @@ import QRCodeDisplay from './QRCode';
 const REFRESH_MS = 7200;
 
 const StationQR = ({ sessionId, station }) => {
-  const [timeLeft, setTimeLeft] = useState(0);
-  const [token, setToken] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [timeLeft, setTimeLeft] = useState(station?.expires_in_seconds || 0);
+  const [token, setToken] = useState(station?.token || null);
+  const [loading, setLoading] = useState(!station?.token);
   const [error, setError] = useState('');
   const [scanStats, setScanStats] = useState(null);
   // Never let an older token response overwrite a newer one.

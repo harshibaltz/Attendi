@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { QrCode, X, CheckCircle, AlertCircle, Camera, Keyboard, Loader2 } from 'lucide-react';
+import { QrCode, X, CheckCircle, AlertCircle, Camera, Keyboard, Loader2, SwitchCamera } from 'lucide-react';
 import jsQR from 'jsqr';
 import api from '../../lib/api';
 
@@ -39,6 +39,7 @@ const QRScanner = ({ onClose, onScan }) => {
   const [frameReady, setFrameReady] = useState(false);
   const [cameraError, setCameraError] = useState('');
   const [cameraNotice, setCameraNotice] = useState('');
+  const [facingMode, setFacingMode] = useState('environment');
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const rafRef = useRef(null);
@@ -218,7 +219,7 @@ const QRScanner = ({ onClose, onScan }) => {
     rafRef.current = requestAnimationFrame(tick);
   };
 
-  const startCamera = async () => {
+  const startCamera = async (mode = facingMode) => {
     setCameraError('');
     setCameraNotice('');
 
@@ -237,10 +238,12 @@ const QRScanner = ({ onClose, onScan }) => {
     // Ask for a modest resolution: enough to resolve a QR code, cheap to
     // decode and fast to negotiate. Over-tight constraints make some phones
     // take seconds to return a stream (or fall through the fallback chain).
-    // Prefer the rear camera, then relax to any camera.
+    // Try requested facing mode first, then fall back gracefully.
     const attempts = [
-      { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
-      { video: { facingMode: { ideal: 'environment' } } },
+      { video: { facingMode: { exact: mode }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+      { video: { facingMode: { ideal: mode }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+      { video: { facingMode: { ideal: mode === 'environment' ? 'user' : 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+      { video: { facingMode: { ideal: mode } } },
       { video: true },
     ];
 
@@ -289,6 +292,18 @@ const QRScanner = ({ onClose, onScan }) => {
     setCameraOn(true);
   };
 
+  const switchCamera = async () => {
+    if (cameraStarting) return;
+    const newMode = facingMode === 'environment' ? 'user' : 'environment';
+    setFacingMode(newMode);
+    if (cameraOn) {
+      stopCamera();
+      // Small delay to ensure tracks are released before requesting new stream
+      await new Promise((r) => setTimeout(r, 150));
+      await startCamera(newMode);
+    }
+  };
+
   const handleManualSubmit = (e) => {
     e.preventDefault();
     if (!manualCode) {
@@ -304,9 +319,22 @@ const QRScanner = ({ onClose, onScan }) => {
       <div className="fet-card bg-white rounded-2xl shadow-modal max-w-md w-full p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-xl font-bold text-text-primary">Scan QR Code</h3>
-          <button onClick={() => { stopCamera(); onClose(); }} className="p-1 hover:bg-page-bg rounded-lg">
-            <X size={24} className="text-text-secondary" />
-          </button>
+          <div className="flex items-center gap-1">
+            {cameraOn && (
+              <button
+                onClick={switchCamera}
+                disabled={cameraStarting}
+                className="p-1.5 hover:bg-page-bg rounded-lg disabled:opacity-60"
+                aria-label="Switch camera"
+                title="Switch camera"
+              >
+                <SwitchCamera size={22} className="text-text-secondary" />
+              </button>
+            )}
+            <button onClick={() => { stopCamera(); onClose(); }} className="p-1 hover:bg-page-bg rounded-lg">
+              <X size={24} className="text-text-secondary" />
+            </button>
+          </div>
         </div>
 
         {result?.success ? (

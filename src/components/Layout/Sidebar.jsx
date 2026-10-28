@@ -4,7 +4,7 @@ import {
   LayoutDashboard, BookOpen, ClipboardCheck, FolderKanban, Megaphone,
   UserCircle, Settings, LogOut, Menu, BarChart3,
   CalendarDays, ChevronRight, Bell, BookPlus, CalendarClock, FilePlus2,
-  Upload, Building2, KeyRound, Users, X,
+  Upload, Building2, KeyRound, Users, X, LifeBuoy,
 } from 'lucide-react';
 import { normalizeRole } from '../../lib/profile';
 import { notificationsApi } from '../../lib/notifications';
@@ -24,6 +24,7 @@ const ACCOUNT = [
   { path: '/profile', icon: UserCircle, label: 'Profile', area: 'hub' },
   { path: '/change-password', icon: KeyRound, label: 'Change password', area: 'hub' },
   { path: '/settings', icon: Settings, label: 'Settings', area: 'hub' },
+  { path: '/support', icon: LifeBuoy, label: 'Customer care', area: 'hub' },
 ];
 
 /* Still fully working screens that simply do not deserve top level billing.
