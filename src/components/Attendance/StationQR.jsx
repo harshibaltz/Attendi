@@ -3,7 +3,8 @@ import { RefreshCw, Clock, Users, Loader2 } from 'lucide-react';
 import attendanceApi from '../../lib/attendance';
 import QRCodeDisplay from './QRCode';
 
-const REFRESH_MS = 4500;
+// Fetch a fresh token slightly before the 8s server-side expiry.
+const REFRESH_MS = 7200;
 
 const StationQR = ({ sessionId, station }) => {
   const [timeLeft, setTimeLeft] = useState(0);
@@ -23,7 +24,7 @@ const StationQR = ({ sessionId, station }) => {
     try {
       const data = await attendanceApi.myStationToken(sessionId);
       setToken(data.token);
-      setTimeLeft(data.expires_in_seconds || 5);
+      setTimeLeft(data.expires_in_seconds || 8);
       setScanStats({
         scans_at_station: data.scans_at_station,
         scans_remaining: data.scans_remaining,

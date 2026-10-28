@@ -449,7 +449,7 @@ const LecturerAttendance = () => {
         if (first?.token) {
           setProjectorToken(first.token);
           setProjectorError('');
-          setProjectorExpiresIn(data.expires_in_seconds || 5);
+          setProjectorExpiresIn(data.expires_in_seconds || 8);
         } else {
           setProjectorError('The server returned no QR code. Try starting the session again.');
         }
@@ -465,7 +465,7 @@ const LecturerAttendance = () => {
       }
     };
     rotate();
-    const interval = setInterval(rotate, 8000);
+    const interval = setInterval(rotate, 7200);
     return () => { cancelled = true; clearInterval(interval); };
   }, [showProjector, selectedSession]);
 
