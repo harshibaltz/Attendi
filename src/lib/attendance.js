@@ -48,6 +48,9 @@ export const attendanceApi = {
   // Lecturer helpers
   eligibleStudents: (classSessionId) => api.get(`/class-sessions/${classSessionId}/eligible-students/`).then(unwrap),
   manualAttendance: (sessionId, data) => api.post(`/attendance/${sessionId}/manual/`, data).then(unwrap),
+  // Add several students at once (backend caps the batch at 15).
+  manualAttendanceBatch: (sessionId, studentIds, status = 'PRESENT') =>
+    api.post(`/attendance/${sessionId}/manual/batch/`, { student_ids: studentIds, status }).then(unwrap),
   correctRecord: (recordId, data) => api.patch(`/attendance/records/${recordId}/`, data).then(unwrap),
   deleteRecord: (recordId) => api.delete(`/attendance/records/${recordId}/`).then(unwrap),
   studentOfClass: (sessionId) => api.post(`/attendance/${sessionId}/student-of-class/`).then(unwrap),

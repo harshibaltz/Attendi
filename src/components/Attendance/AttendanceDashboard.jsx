@@ -9,6 +9,7 @@ import attendanceApi from '../../lib/attendance';
 import AttendanceSession from './AttendanceSession';
 import QRScanner from './QRScanner';
 import StationQR from './StationQR';
+import AddStudentsPanel from './AddStudentsPanel';
 import QRCodeDisplay from './QRCode';
 import {
   SectionHeader, Card, CardHead, CardBody, CardFoot, Eyebrow, Pill, Tag, Callout, EmptyState,
@@ -374,10 +375,10 @@ const LecturerAttendance = () => {
   const [recordsExportFormat, setRecordsExportFormat] = useState('csv');
   const [flash, setFlash] = useState('');
   const [showAddStudent, setShowAddStudent] = useState(false);
-  const [addStudentId, setAddStudentId] = useState('');
-  const [addStudentStatus, setAddStudentStatus] = useState('PRESENT');
-  const [addingStudent, setAddingStudent] = useState(false);
-  const [addStudentError, setAddStudentError] = useState('');
+  const [addRoster, setAddRoster] = useState([]);
+  const [addRosterLoading, setAddRosterLoading] = useState(false);
+  const [addRosterError, setAddRosterError] = useState('');
+  const addRosterForRef = useRef(null);
   const [recordSearch, setRecordSearch] = useState('');
   const [recordSortBy, setRecordSortBy] = useState('name'); // name, matricule, department, status, time
   // One live-status request per session at a time: slow responses must not
@@ -636,36 +637,50 @@ const LecturerAttendance = () => {
     }
   };
 
-  const handleAddStudent = async (session) => {
-    if (!addStudentId.trim()) {
-      setAddStudentError('Select a student to add.');
+  const loadAddRoster = async (session) => {
+    const classSessionId = session.class_session_id || session.class_session;
+    addRosterForRef.current = classSessionId || null;
+    setAddRosterError('');
+    setAddRoster([]);
+    if (!classSessionId) {
+      setAddRosterError('This session is not linked to a class roster.');
       return;
     }
-    setAddingStudent(true);
-    setAddStudentError('');
+    setAddRosterLoading(true);
     try {
-      const created = await attendanceApi.manualAttendance(session.id, {
-        student_id: addStudentId,
-        status: addStudentStatus,
-      });
-      const sessId = session.id;
-      setRecords((prev) => {
-        const existing = prev[sessId] || [];
-        const exists = existing.some((r) => r.id === created.id);
-        return {
-          ...prev,
-          [sessId]: exists ? existing.map((r) => (r.id === created.id ? { ...r, ...created } : r)) : [created, ...existing],
-        };
-      });
-      setAddStudentId('');
-      setShowAddStudent(false);
-      setFlash('Student added to attendance.');
-      setTimeout(() => setFlash(''), 3000);
+      const data = await attendanceApi.eligibleStudents(classSessionId);
+      setAddRoster(Array.isArray(data) ? data : []);
     } catch (err) {
-      setAddStudentError(err.response?.data?.error?.message || 'Could not add student.');
+      setAddRosterError(
+        err.response?.data?.error?.message
+        || (err.code === 'ERR_NETWORK' ? 'Could not reach the server.' : 'Could not load the class roster.'),
+      );
     } finally {
-      setAddingStudent(false);
+      setAddRosterLoading(false);
     }
+  };
+
+  const openAddStudent = (session) => {
+    const next = !showAddStudent;
+    setShowAddStudent(next);
+    if (!next) return;
+    const classSessionId = session.class_session_id || session.class_session;
+    if (!classSessionId || addRosterForRef.current !== classSessionId || addRosterError) {
+      loadAddRoster(session);
+    }
+  };
+
+  const handleStudentsAdded = (created, skipped) => {
+    const sessId = selectedSession.id;
+    setRecords((prev) => {
+      const byId = new Map((prev[sessId] || []).map((r) => [r.id, r]));
+      created.forEach((r) => byId.set(r.id, { ...byId.get(r.id), ...r }));
+      return { ...prev, [sessId]: Array.from(byId.values()) };
+    });
+    setShowAddStudent(false);
+    const skippedNote = skipped.length ? ` ${skipped.length} skipped (already recorded or not enrolled).` : '';
+    setFlash(`${created.length} student${created.length === 1 ? '' : 's'} added to attendance.${skippedNote}`);
+    setTimeout(() => setFlash(''), 5000);
   };
 
   const displaySessions = useMemo(() => {
@@ -992,7 +1007,7 @@ const LecturerAttendance = () => {
                     <Square size={14} /> Close Session
                   </button>
                 )}
-                <button onClick={() => { setSelectedSession(null); setCorrectingRecord(null); }} className="p-1 hover:bg-page-bg rounded-lg" aria-label="Close session details">
+                <button onClick={() => { setSelectedSession(null); setCorrectingRecord(null); setShowAddStudent(false); }} className="p-1 hover:bg-page-bg rounded-lg" aria-label="Close session details">
                   <X size={20} />
                 </button>
               </div>
@@ -1010,14 +1025,10 @@ const LecturerAttendance = () => {
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowAddStudent((v) => !v);
-                    setAddStudentError('');
-                    setAddStudentId('');
-                  }}
+                  onClick={() => openAddStudent(selectedSession)}
                   className="fet-btn-secondary h-8 text-xs"
                 >
-                  <Plus size={14} /> Add Student
+                  <Plus size={14} /> Add Students
                 </button>
                 {(records[selectedSession.id]?.length || 0) > 0 && (
                   <>
@@ -1131,51 +1142,17 @@ const LecturerAttendance = () => {
             </div>
 
             {showAddStudent && (
-              <div className="mb-3 p-3 border border-border-default rounded-xl bg-page-bg">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <div className="sm:col-span-2">
-                    <label className="fet-label">Student</label>
-                    <select
-                      value={addStudentId}
-                      onChange={(e) => {
-                        setAddStudentId(e.target.value);
-                        setAddStudentError('');
-                      }}
-                      className="fet-select"
-                    >
-                      <option value="">Select student from roster</option>
-                      {(roster.length ? roster : (records[selectedSession.id] || []).map((r) => ({ id: r.student_id, full_name: r.student_name, student_number: r.student_number, email: r.student_email })))
-                        .filter((s, idx, arr) => arr.findIndex((x) => x.id === s.id) === idx)
-                        .map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {(s.full_name || s.student_name)}{s.student_number ? ` - ${s.student_number}` : ''}{s.email ? ` (${s.email})` : ''}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="fet-label">Status</label>
-                    <select
-                      value={addStudentStatus}
-                      onChange={(e) => setAddStudentStatus(e.target.value)}
-                      className="fet-select"
-                    >
-                      <option value="PRESENT">Present</option>
-                      <option value="LATE">Late</option>
-                      <option value="ABSENT">Absent</option>
-                      <option value="EXCUSED">Excused</option>
-                    </select>
-                  </div>
-                </div>
-                {addStudentError && <p className="mt-2 text-xs text-red-500">{addStudentError}</p>}
-                <div className="mt-3 flex gap-2">
-                  <button onClick={() => handleAddStudent(selectedSession)} disabled={addingStudent} className="fet-btn-primary">
-                    {addingStudent ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add
-                  </button>
-                  <button onClick={() => { setShowAddStudent(false); setAddStudentError(''); }} className="fet-btn-secondary">
-                    Cancel
-                  </button>
-                </div>
+              <div className="mb-3">
+                <AddStudentsPanel
+                  sessionId={selectedSession.id}
+                  existingStudentIds={(records[selectedSession.id] || []).map((r) => r.student || r.student_id)}
+                  roster={addRoster}
+                  rosterLoading={addRosterLoading}
+                  rosterError={addRosterError}
+                  onReloadRoster={() => loadAddRoster(selectedSession)}
+                  onAdded={handleStudentsAdded}
+                  onCancel={() => setShowAddStudent(false)}
+                />
               </div>
             )}
 

@@ -4,6 +4,7 @@ import {
   ArrowLeft, RefreshCw, Loader2, Users, ClipboardCheck, Calendar, Clock, Download, Search, Plus, Pencil, Trash2,
 } from 'lucide-react';
 import attendanceApi from '../../lib/attendance';
+import AddStudentsPanel from './AddStudentsPanel';
 import {
   SectionHeader, Card, CardHead, CardBody, Pill, Tag, Callout, EmptyState,
 } from '../UI';
@@ -38,13 +39,12 @@ const SessionDetail = () => {
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('name');
   const [showAddStudent, setShowAddStudent] = useState(false);
-  const [addStudentId, setAddStudentId] = useState('');
-  const [addStudentStatus, setAddStudentStatus] = useState('PRESENT');
-  const [addingStudent, setAddingStudent] = useState(false);
-  const [addStudentError, setAddStudentError] = useState('');
   const [correctingRecord, setCorrectingRecord] = useState(null);
   const [correctionStatus, setCorrectionStatus] = useState('PRESENT');
   const [roster, setRoster] = useState([]);
+  const [rosterLoading, setRosterLoading] = useState(false);
+  const [rosterError, setRosterError] = useState('');
+  const [notice, setNotice] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -63,19 +63,41 @@ const SessionDetail = () => {
     load();
   }, [load]);
 
-  useEffect(() => {
-    const loadRoster = async () => {
-      try {
-        if (data?.session?.class_session_id) {
-          const r = await attendanceApi.eligibleStudents(data.session.class_session_id);
-          setRoster(Array.isArray(r) ? r : []);
-        }
-      } catch {
-        setRoster([]);
-      }
-    };
-    loadRoster();
+  const loadRoster = useCallback(async () => {
+    const classSessionId = data?.session?.class_session_id;
+    setRosterError('');
+    if (!classSessionId) return;
+    setRosterLoading(true);
+    try {
+      const r = await attendanceApi.eligibleStudents(classSessionId);
+      setRoster(Array.isArray(r) ? r : []);
+    } catch (err) {
+      setRoster([]);
+      setRosterError(
+        err.response?.data?.error?.message
+        || (err.code === 'ERR_NETWORK' ? 'Could not reach the server.' : 'Could not load the class roster.'),
+      );
+    } finally {
+      setRosterLoading(false);
+    }
   }, [data?.session?.class_session_id]);
+
+  useEffect(() => {
+    loadRoster();
+  }, [loadRoster]);
+
+  const handleStudentsAdded = (created, skipped) => {
+    setData((prev) => {
+      if (!prev) return prev;
+      const byId = new Map((prev.records || []).map((r) => [r.id, r]));
+      created.forEach((r) => byId.set(r.id, { ...byId.get(r.id), ...r }));
+      return { ...prev, records: Array.from(byId.values()) };
+    });
+    setShowAddStudent(false);
+    const skippedNote = skipped.length ? ` ${skipped.length} skipped (already recorded or not enrolled).` : '';
+    setNotice(`${created.length} student${created.length === 1 ? '' : 's'} added.${skippedNote}`);
+    setTimeout(() => setNotice(''), 5000);
+  };
 
   const session = data?.session;
   const records = Array.isArray(data?.records) ? data.records : [];
@@ -175,6 +197,7 @@ const SessionDetail = () => {
       />
 
       {error ? <Callout tone="bd">{error}</Callout> : null}
+      {notice ? <Callout tone="ok">{notice}</Callout> : null}
 
       {loading ? (
         <Card accent="attendance">
@@ -228,14 +251,10 @@ const SessionDetail = () => {
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  setShowAddStudent((v) => !v);
-                  setAddStudentError('');
-                  setAddStudentId('');
-                }}
+                onClick={() => setShowAddStudent((v) => !v)}
                 className="fet-btn-secondary"
               >
-                <Plus size={14} /> Add Student
+                <Plus size={14} /> Add Students
               </button>
               {records.length > 0 && (
                 <>
@@ -279,67 +298,17 @@ const SessionDetail = () => {
           </CardHead>
           <CardBody>
             {showAddStudent && (
-              <div className="mb-3 p-3 border border-border-default rounded-xl bg-page-bg">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <div className="sm:col-span-2">
-                    <label className="fet-label">Student</label>
-                    <select
-                      value={addStudentId}
-                      onChange={(e) => {
-                        setAddStudentId(e.target.value);
-                        setAddStudentError('');
-                      }}
-                      className="fet-select"
-                    >
-                      <option value="">Select student</option>
-                      {(roster.length ? roster : records.map((r) => ({ id: r.student_id, full_name: r.student_name, student_number: r.student_number })))
-                        .filter((s, idx, arr) => arr.findIndex((x) => x.id === s.id) === idx)
-                        .map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {(s.full_name || s.student_name)}{s.student_number ? ` - ${s.student_number}` : ''}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="fet-label">Status</label>
-                    <select value={addStudentStatus} onChange={(e) => setAddStudentStatus(e.target.value)} className="fet-select">
-                      <option value="PRESENT">Present</option>
-                      <option value="LATE">Late</option>
-                      <option value="ABSENT">Absent</option>
-                      <option value="EXCUSED">Excused</option>
-                    </select>
-                  </div>
-                </div>
-                {addStudentError && <p className="mt-2 text-xs text-red-500">{addStudentError}</p>}
-                <div className="mt-3 flex gap-2">
-                  <button onClick={async () => {
-                    if (!addStudentId.trim()) { setAddStudentError('Select a student to add.'); return; }
-                    setAddingStudent(true);
-                    setAddStudentError('');
-                    try {
-                      const created = await attendanceApi.manualAttendance(sessionId, { student_id: addStudentId, status: addStudentStatus });
-                      setData((prev) => {
-                        if (!prev) return prev;
-                        const existing = prev.records || [];
-                        const exists = existing.some((r) => r.id === created.id);
-                        return {
-                          ...prev,
-                          records: exists ? existing.map((r) => (r.id === created.id ? { ...r, ...created } : r)) : [created, ...existing],
-                        };
-                      });
-                      setAddStudentId('');
-                      setShowAddStudent(false);
-                    } catch (err) {
-                      setAddStudentError(err.response?.data?.error?.message || 'Could not add student.');
-                    } finally {
-                      setAddingStudent(false);
-                    }
-                  }} disabled={addingStudent} className="fet-btn-primary">
-                    {addingStudent ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add
-                  </button>
-                  <button onClick={() => { setShowAddStudent(false); setAddStudentError(''); }} className="fet-btn-secondary">Cancel</button>
-                </div>
+              <div className="mb-3">
+                <AddStudentsPanel
+                  sessionId={sessionId}
+                  existingStudentIds={records.map((r) => r.student || r.student_id)}
+                  roster={roster}
+                  rosterLoading={rosterLoading}
+                  rosterError={rosterError}
+                  onReloadRoster={loadRoster}
+                  onAdded={handleStudentsAdded}
+                  onCancel={() => setShowAddStudent(false)}
+                />
               </div>
             )}
 
