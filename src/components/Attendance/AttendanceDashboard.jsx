@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Calendar, Clock, QrCode, Plus,
   Eye, X, Monitor, Square, Loader2, RefreshCw, Pencil, Award, CreditCard, Trash2, AlertCircle,
-  UserCheck, Search, ChevronDown, CheckCircle2, ClipboardCheck, ArrowRight,
+  UserCheck, Search, ChevronDown, CheckCircle2, ClipboardCheck, ArrowRight, Download,
 } from 'lucide-react';
 import attendanceApi from '../../lib/attendance';
 import AttendanceSession from './AttendanceSession';
@@ -373,6 +373,13 @@ const LecturerAttendance = () => {
   const [correctionStatus, setCorrectionStatus] = useState('PRESENT');
   const [recordsExportFormat, setRecordsExportFormat] = useState('csv');
   const [flash, setFlash] = useState('');
+  const [showAddStudent, setShowAddStudent] = useState(false);
+  const [addStudentId, setAddStudentId] = useState('');
+  const [addStudentStatus, setAddStudentStatus] = useState('PRESENT');
+  const [addingStudent, setAddingStudent] = useState(false);
+  const [addStudentError, setAddStudentError] = useState('');
+  const [recordSearch, setRecordSearch] = useState('');
+  const [recordSortBy, setRecordSortBy] = useState('name'); // name, matricule, department, status, time
   // One live-status request per session at a time: slow responses must not
   // stack up and land out of order (which made Present counts jump around).
   const statusInFlight = useRef(new Set());
@@ -626,6 +633,38 @@ const LecturerAttendance = () => {
       setTimeout(() => setFlash(''), 3000);
     } catch (err) {
       alert(err.response?.data?.error?.message || 'Could not delete the record.');
+    }
+  };
+
+  const handleAddStudent = async (session) => {
+    if (!addStudentId.trim()) {
+      setAddStudentError('Select a student to add.');
+      return;
+    }
+    setAddingStudent(true);
+    setAddStudentError('');
+    try {
+      const created = await attendanceApi.manualAttendance(session.id, {
+        student_id: addStudentId,
+        status: addStudentStatus,
+      });
+      const sessId = session.id;
+      setRecords((prev) => {
+        const existing = prev[sessId] || [];
+        const exists = existing.some((r) => r.id === created.id);
+        return {
+          ...prev,
+          [sessId]: exists ? existing.map((r) => (r.id === created.id ? { ...r, ...created } : r)) : [created, ...existing],
+        };
+      });
+      setAddStudentId('');
+      setShowAddStudent(false);
+      setFlash('Student added to attendance.');
+      setTimeout(() => setFlash(''), 3000);
+    } catch (err) {
+      setAddStudentError(err.response?.data?.error?.message || 'Could not add student.');
+    } finally {
+      setAddingStudent(false);
     }
   };
 
@@ -966,21 +1005,54 @@ const LecturerAttendance = () => {
               <div><span className="font-semibold">Status:</span> {selectedSession.status}</div>
             </div>
 
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
               <h4 className="font-semibold text-text-primary">Attendance Records ({records[selectedSession.id]?.length || 0})</h4>
-              {(records[selectedSession.id]?.length || 0) > 0 && (
-                <div className="flex items-center gap-2">
-                  <select
-                    value={recordsExportFormat}
-                    onChange={(e) => setRecordsExportFormat(e.target.value)}
-                    className="fet-select h-8 text-xs"
-                  >
-                    <option value="csv">CSV</option>
-                    <option value="pdf">PDF</option>
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => {
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddStudent((v) => !v);
+                    setAddStudentError('');
+                    setAddStudentId('');
+                  }}
+                  className="fet-btn-secondary h-8 text-xs"
+                >
+                  <Plus size={14} /> Add Student
+                </button>
+                {(records[selectedSession.id]?.length || 0) > 0 && (
+                  <>
+                    <div className="relative">
+                      <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-text-muted" />
+                      <input
+                        type="text"
+                        value={recordSearch}
+                        onChange={(e) => setRecordSearch(e.target.value)}
+                        placeholder="Search name/matricule/email"
+                        className="fet-input h-8 pl-7 w-48 text-xs"
+                      />
+                    </div>
+                    <select
+                      value={recordSortBy}
+                      onChange={(e) => setRecordSortBy(e.target.value)}
+                      className="fet-select h-8 text-xs"
+                    >
+                      <option value="name">Sort by Name</option>
+                      <option value="matricule">Sort by Matricule</option>
+                      <option value="department">Sort by Department</option>
+                      <option value="status">Sort by Status</option>
+                      <option value="time">Sort by Time</option>
+                    </select>
+                    <select
+                      value={recordsExportFormat}
+                      onChange={(e) => setRecordsExportFormat(e.target.value)}
+                      className="fet-select h-8 text-xs"
+                    >
+                      <option value="csv">CSV</option>
+                      <option value="pdf">PDF</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => {
                       const recs = records[selectedSession.id] || [];
                       if (recordsExportFormat === 'csv') {
                         const head = ['Student Name', 'Email', 'Status', 'Method', 'Time'];
@@ -1053,14 +1125,67 @@ const LecturerAttendance = () => {
                   >
                     <Download size={14} /> Download
                   </button>
-                </div>
-              )}
+                  </>
+                )}
+              </div>
             </div>
+
+            {showAddStudent && (
+              <div className="mb-3 p-3 border border-border-default rounded-xl bg-page-bg">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="sm:col-span-2">
+                    <label className="fet-label">Student</label>
+                    <select
+                      value={addStudentId}
+                      onChange={(e) => {
+                        setAddStudentId(e.target.value);
+                        setAddStudentError('');
+                      }}
+                      className="fet-select"
+                    >
+                      <option value="">Select student from roster</option>
+                      {(roster.length ? roster : (records[selectedSession.id] || []).map((r) => ({ id: r.student_id, full_name: r.student_name, student_number: r.student_number, email: r.student_email })))
+                        .filter((s, idx, arr) => arr.findIndex((x) => x.id === s.id) === idx)
+                        .map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {(s.full_name || s.student_name)}{s.student_number ? ` - ${s.student_number}` : ''}{s.email ? ` (${s.email})` : ''}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="fet-label">Status</label>
+                    <select
+                      value={addStudentStatus}
+                      onChange={(e) => setAddStudentStatus(e.target.value)}
+                      className="fet-select"
+                    >
+                      <option value="PRESENT">Present</option>
+                      <option value="LATE">Late</option>
+                      <option value="ABSENT">Absent</option>
+                      <option value="EXCUSED">Excused</option>
+                    </select>
+                  </div>
+                </div>
+                {addStudentError && <p className="mt-2 text-xs text-red-500">{addStudentError}</p>}
+                <div className="mt-3 flex gap-2">
+                  <button onClick={() => handleAddStudent(selectedSession)} disabled={addingStudent} className="fet-btn-primary">
+                    {addingStudent ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add
+                  </button>
+                  <button onClick={() => { setShowAddStudent(false); setAddStudentError(''); }} className="fet-btn-secondary">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="overflow-x-auto">
               <table className="fet-table">
                 <thead>
                   <tr>
                     <th>Student</th>
+                    <th>Matricule</th>
+                    <th>Department</th>
                     <th>Email</th>
                     <th>Status</th>
                     <th>Method</th>
@@ -1069,13 +1194,55 @@ const LecturerAttendance = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {(records[selectedSession.id] || []).map((record) => (
+                  {(() => {
+                    let list = records[selectedSession.id] || [];
+                    const q = recordSearch.trim().toLowerCase();
+                    if (q) {
+                      list = list.filter((r) => {
+                        const name = (r.student_name || '').toLowerCase();
+                        const email = (r.student_email || '').toLowerCase();
+                        const mat = (r.student_number || r.matricule || '').toLowerCase();
+                        return name.includes(q) || email.includes(q) || mat.includes(q);
+                      });
+                    }
+                    list = [...list].sort((a, b) => {
+                      if (recordSortBy === 'name') {
+                        return (a.student_name || '').localeCompare(b.student_name || '');
+                      }
+                      if (recordSortBy === 'matricule') {
+                        return (a.student_number || a.matricule || '').localeCompare(b.student_number || b.matricule || '');
+                      }
+                      if (recordSortBy === 'department') {
+                        return (a.department || a.department_code || '').localeCompare(b.department || b.department_code || '');
+                      }
+                      if (recordSortBy === 'status') {
+                        return (a.status || '').localeCompare(b.status || '');
+                      }
+                      if (recordSortBy === 'time') {
+                        const ta = a.recorded_at ? new Date(a.recorded_at).getTime() : 0;
+                        const tb = b.recorded_at ? new Date(b.recorded_at).getTime() : 0;
+                        return tb - ta;
+                      }
+                      return 0;
+                    });
+                    if (list.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={8} className="text-center py-8 text-text-secondary">
+                            No records found
+                          </td>
+                        </tr>
+                      );
+                    }
+                    return list.map((record) => (
                     <tr key={record.id}>
-                      <td className="font-medium">{record.student_name}</td>
-                      <td className="text-sm">{record.student_email}</td>
+                      <td className="font-medium">{record.student_name || '-'}</td>
+                      <td className="text-sm">{record.student_number || record.matricule || '-'}</td>
+                      <td className="text-sm">{record.department || record.department_code || '-'}</td>
+                      <td className="text-sm">{record.student_email || '-'}</td>
                       <td><span className={getRecordStatusColor(record.status)}>{record.status}</span></td>
-                      <td className="text-sm">{record.verification_method}</td>
-                      <td className="text-sm">{fmtTime(record.recorded_at)}</td>
+                      <td className="text-sm">{record.verification_method || '-'}</td>
+                      <td className="text-sm">{record.recorded_at ? `${fmtDate(record.recorded_at)} ${fmtTime(record.recorded_at)}` : '-'}</td>
                       <td>
                         <div className="flex items-center gap-3">
                           <button
@@ -1094,14 +1261,8 @@ const LecturerAttendance = () => {
                         </div>
                       </td>
                     </tr>
-                  ))}
-                  {(records[selectedSession.id] || []).length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="text-center py-8 text-text-secondary">
-                        <Loader2 size={20} className="inline animate-spin mr-2" />No records loaded yet
-                      </td>
-                    </tr>
-                  )}
+                    ));
+                  })()}
                 </tbody>
               </table>
             </div>
