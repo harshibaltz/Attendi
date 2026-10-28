@@ -3,7 +3,7 @@ import pytest
 from django.test import Client
 from django.urls import reverse
 
-from apps.accounts.models import User
+from apps.accounts.models import StudentProfile, User
 from apps.academics.models import Department, Faculty
 
 
@@ -138,6 +138,39 @@ class TestAuth:
         assert user.student_profile.student_number == "2026TST01"
         assert user.student_profile.department == dept
         assert user.student_profile.level == "300"
+
+    def test_self_register_duplicate_matricule_returns_field_message(self):
+        fet = Faculty.objects.create(code="FET", name="Faculty of Engineering and Technology")
+        dept = Department.objects.create(faculty=fet, code="CIV", name="Civil Engineering")
+        existing = User.objects.create_user(
+            email="existing@student.ubuea.cm", password="pass12345", first_name="Old", last_name="Student",
+            role="STUDENT",
+        )
+        StudentProfile.objects.create(
+            user=existing, student_number="2026TST01", department=dept, level="300",
+        )
+        client = Client()
+        resp = client.post(
+            reverse("auth-self-register"),
+            data={
+                "email": "another@student.ubuea.cm",
+                "password": "pass12345",
+                "password_confirm": "pass12345",
+                "first_name": "Another",
+                "last_name": "Student",
+                "department": str(dept.id),
+                "role": "STUDENT",
+                "matricule": "2026tst01",
+                "level": "300",
+                "personal_email": "another.personal@gmail.com",
+            },
+            content_type="application/json",
+        )
+        assert resp.status_code == 400
+        body = resp.json()
+        assert body["success"] is False
+        message = body["error"]["details"]["matricule"][0]
+        assert "matricule already has an account" in message
 
     def test_self_register_rejects_invalid_level(self):
         fet = Faculty.objects.create(code="FET", name="Faculty of Engineering and Technology")

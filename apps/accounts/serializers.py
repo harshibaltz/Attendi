@@ -183,7 +183,10 @@ class SelfRegisterSerializer(serializers.Serializer):
     def validate_email(self, value):
         value = value.lower().strip()
         if User.objects.filter(email__iexact=value).exists():
-            raise serializers.ValidationError("An account with this email already exists.")
+            raise serializers.ValidationError(
+                "An account with this email already exists. Sign in instead, or use "
+                "\"Forgot password\" if you no longer remember the password."
+            )
         return value
 
     def validate_personal_email(self, value):
@@ -191,7 +194,10 @@ class SelfRegisterSerializer(serializers.Serializer):
             return None
         value = value.lower().strip()
         if User.objects.filter(email__iexact=value).exists():
-            raise serializers.ValidationError("An account with this personal email already exists.")
+            raise serializers.ValidationError(
+                "This personal email is already linked to another account. "
+                "If it is yours, sign in or reset the password instead."
+            )
         return value
 
     def validate_level(self, value):
@@ -220,7 +226,12 @@ class SelfRegisterSerializer(serializers.Serializer):
             # be checked the same way - otherwise the DB unique index would
             # reject the save as an unhandled IntegrityError (HTTP 500).
             if StudentProfile.objects.filter(student_number__iexact=matricule).exists():
-                raise serializers.ValidationError({"matricule": "This matricule is already registered."})
+                raise serializers.ValidationError({
+                    "matricule": (
+                        "This matricule already has an account. Sign in with your existing "
+                        "account, or use \"Forgot password\" to get a reset code."
+                    )
+                })
             personal_email = (attrs.get("personal_email") or "").strip()
             if not personal_email:
                 raise serializers.ValidationError({"personal_email": "Personal email is required for students."})

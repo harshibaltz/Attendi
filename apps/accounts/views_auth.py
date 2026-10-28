@@ -3,6 +3,7 @@
 Cookie-based JWT. Returns tokens both in cookies AND body for dev flexibility.
 """
 import hashlib
+import logging
 import secrets
 from datetime import timedelta
 
@@ -13,6 +14,7 @@ from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
@@ -43,6 +45,7 @@ from .serializers import (
 from .throttling import PasswordResetThrottle
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 class RegisterView(APIView):
@@ -83,7 +86,11 @@ class SelfRegisterView(APIView):
 
     def post(self, request):
         serializer = SelfRegisterSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            # Keep the reason visible in Vercel logs; field names and messages
+            # only (never the submitted values), so this stays PII-free.
+            logger.info("self-register rejected: %s", serializer.errors)
+            raise ValidationError(serializer.errors)
         user = serializer.save()
         user.record_login()
         refresh = get_token_pair_for_user(user)
