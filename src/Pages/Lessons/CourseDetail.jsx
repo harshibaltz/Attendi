@@ -46,6 +46,12 @@ const formatDateTime = (iso) => {
   return `${d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} at ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
 };
 
+const toLocalDateTimeInput = (iso) => {
+  if (!iso) return '';
+  const date = new Date(iso);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+};
+
 const BUCKET_ORDER = ['This week', 'Last week', 'Earlier this month', 'Older'];
 
 const bucketFor = (iso) => {
@@ -75,7 +81,7 @@ const CourseDetail = ({ user }) => {
   const [courseLoading, setCourseLoading] = useState(true);
   const [courseError, setCourseError] = useState('');
 
-  const [tab, setTab] = useState('materials');
+  const [tab, setTab] = useState('stream');
 
   const [materials, setMaterials] = useState([]);
   const [materialsLoading, setMaterialsLoading] = useState(false);
@@ -86,6 +92,8 @@ const CourseDetail = ({ user }) => {
   const [annLoading, setAnnLoading] = useState(false);
   const [annForm, setAnnForm] = useState({ title: '', content: '' });
   const [postingAnn, setPostingAnn] = useState(false);
+  const [editingAnnouncement, setEditingAnnouncement] = useState(null);
+  const [savingAnnouncement, setSavingAnnouncement] = useState(false);
 
   const [assignments, setAssignments] = useState([]);
   const [asgnLoading, setAsgnLoading] = useState(false);
@@ -101,6 +109,9 @@ const CourseDetail = ({ user }) => {
   const [submitForm, setSubmitForm] = useState({ note: '', file: null });
   const [grades, setGrades] = useState({});
   const [savingGrade, setSavingGrade] = useState(null);
+  const [activeSubmitAssignment, setActiveSubmitAssignment] = useState(null);
+  const [editingAssignment, setEditingAssignment] = useState(null);
+  const [savingAssignment, setSavingAssignment] = useState(false);
 
 
   const [message, setMessage] = useState('');
@@ -108,7 +119,6 @@ const CourseDetail = ({ user }) => {
 
   const role = normalizeRole(user?.role);
   const isStaff = role === 'lecturer' || role === 'admin';
-  const isAdmin = role === 'admin';
 
   const notify = (msg) => {
     setMessage(msg);
@@ -189,9 +199,9 @@ const CourseDetail = ({ user }) => {
   }, [offeringId]);
 
   useEffect(() => {
-    if (tab === 'materials') loadMaterials();
-    if (tab === 'announcements') loadAnnouncements();
-    if (tab === 'assignments') loadAssignments();
+    if (tab === 'materials' || tab === 'stream') loadMaterials();
+    if (tab === 'announcements' || tab === 'stream') loadAnnouncements();
+    if (tab === 'assignments' || tab === 'stream') loadAssignments();
   }, [tab, loadMaterials, loadAnnouncements, loadAssignments]);
 
   const handleUpload = async () => {
@@ -266,6 +276,45 @@ const CourseDetail = ({ user }) => {
     }
   };
 
+  const handleSaveAnnouncement = async () => {
+    if (!editingAnnouncement?.title.trim() || !editingAnnouncement?.content.trim()) {
+      notifyError('Please add a title and message.');
+      return;
+    }
+    setSavingAnnouncement(true);
+    try {
+      await announcementsApi.update(editingAnnouncement.id, {
+        title: editingAnnouncement.title.trim(),
+        content: editingAnnouncement.content.trim(),
+      });
+      setEditingAnnouncement(null);
+      notify('Announcement updated.');
+      loadAnnouncements();
+    } catch (err) {
+      notifyError(err?.response?.data?.error?.message || 'Failed to update announcement.');
+    } finally {
+      setSavingAnnouncement(false);
+    }
+  };
+
+  const handlePinAnnouncement = async (ann) => {
+    try {
+      await announcementsApi.setPinned(ann.id, !ann.is_pinned);
+      loadAnnouncements();
+    } catch (err) {
+      notifyError(err?.response?.data?.error?.message || 'Failed to update the pin.');
+    }
+  };
+
+  const handleMarkRead = async (ann) => {
+    try {
+      await announcementsApi.markRead(ann.id);
+      loadAnnouncements();
+    } catch (err) {
+      notifyError(err?.response?.data?.error?.message || 'Failed to mark announcement as read.');
+    }
+  };
+
   const handleCreateAssignment = async () => {
     if (!asgnForm.title.trim()) {
       notifyError('Please give the assignment a title.');
@@ -299,6 +348,42 @@ const CourseDetail = ({ user }) => {
     }
   };
 
+  const handleSaveAssignment = async () => {
+    if (!editingAssignment?.title.trim()) {
+      notifyError('Please give the assignment a title.');
+      return;
+    }
+    setSavingAssignment(true);
+    try {
+      await learningApi.updateAssignment(editingAssignment.id, {
+        title: editingAssignment.title.trim(),
+        description: editingAssignment.description,
+        points_possible: Number(editingAssignment.points_possible) || 0,
+        due_at: editingAssignment.due_at || null,
+        allow_late: editingAssignment.allow_late,
+        max_submissions: Number(editingAssignment.max_submissions) || 0,
+      });
+      setEditingAssignment(null);
+      notify('Assignment updated.');
+      loadAssignments();
+    } catch (err) {
+      notifyError(err?.response?.data?.error?.message || 'Failed to update assignment.');
+    } finally {
+      setSavingAssignment(false);
+    }
+  };
+
+  const handleArchiveAssignment = async (assignment) => {
+    if (!window.confirm(`Archive "${assignment.title}"? Students will no longer be able to turn in work.`)) return;
+    try {
+      await learningApi.deleteAssignment(assignment.id);
+      notify('Assignment archived.');
+      loadAssignments();
+    } catch (err) {
+      notifyError(err?.response?.data?.error?.message || 'Failed to archive assignment.');
+    }
+  };
+
   const handleSubmitWork = async (assignment) => {
     setSubmitting(true);
     setErrorMsg('');
@@ -313,6 +398,7 @@ const CourseDetail = ({ user }) => {
         note: submitForm.note,
       });
       setSubmitForm({ note: '', file: null });
+      setActiveSubmitAssignment(null);
       notify('Work submitted.');
       loadAssignments();
     } catch (err) {
@@ -353,6 +439,7 @@ const CourseDetail = ({ user }) => {
   };
 
   const statusChip = (assignment) => {
+    if (assignment.status === 'ARCHIVED') return { label: 'Archived', tone: 'warning' };
     const mine = assignment.my_submission;
     const past = assignment.due_at && new Date(assignment.due_at) < new Date();
     if (mine) {
@@ -387,6 +474,13 @@ const CourseDetail = ({ user }) => {
   }
 
   const [from, to] = PALETTES[hashIdx(course.course_code || course.id) % PALETTES.length];
+  const streamItems = [
+    ...announcements.map((item) => ({ id: item.id, type: 'Announcement', title: item.title, description: item.content, at: item.published_at || item.created_at, tab: 'announcements', pinned: item.is_pinned })),
+    ...assignments.filter((item) => item.status === 'ACTIVE').map((item) => ({ id: item.id, type: 'Assignment', title: item.title, description: item.description, at: item.created_at, tab: 'assignments', due_at: item.due_at })),
+    ...materials.map((item) => ({ id: item.id, type: 'Material', title: item.title, description: item.description, at: item.created_at, tab: 'materials' })),
+  ].sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || new Date(b.at) - new Date(a.at));
+  const todo = assignments.filter((item) => item.status === 'ACTIVE' && (!item.my_submission || item.my_submission.status === 'RETURNED'));
+  const toReview = assignments.reduce((total, item) => total + (item.pending_review_count || 0), 0);
   const grouped = BUCKET_ORDER.map((bucket) => ({
     bucket,
     items: materials.filter((m) => bucketFor(m.created_at) === bucket),
@@ -426,6 +520,7 @@ const CourseDetail = ({ user }) => {
       {/* Tabs — scroll horizontally instead of pushing the page wide */}
       <div className="flex gap-1 border-b border-border-default overflow-x-auto">
         {[
+          { key: 'stream', label: 'Stream', icon: FolderOpen },
           { key: 'materials', label: `Materials (${materials.length})`, icon: FileText },
           { key: 'announcements', label: `Announcements (${announcements.length})`, icon: Megaphone },
           { key: 'assignments', label: `Assignments (${assignments.length})`, icon: ClipboardCheck },
@@ -445,6 +540,35 @@ const CourseDetail = ({ user }) => {
           </button>
         ))}
       </div>
+
+      {tab === 'stream' && (
+        <div className="space-y-4">
+          <div className="fet-card p-5 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-text-primary">{isStaff ? 'Work to review' : 'Your work'}</h3>
+              <p className="text-sm text-text-secondary mt-1">
+                {isStaff ? `${toReview} submission${toReview === 1 ? '' : 's'} awaiting a grade` : `${todo.length} assignment${todo.length === 1 ? '' : 's'} to do`}
+              </p>
+            </div>
+            <button className="fet-btn-secondary" onClick={() => setTab('assignments')}>Open assignments</button>
+          </div>
+          {(materialsLoading || annLoading || asgnLoading) && <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>}
+          {!materialsLoading && !annLoading && !asgnLoading && streamItems.length === 0 && (
+            <div className="fet-card p-10 text-center text-text-secondary">Nothing has been posted in this classroom yet.</div>
+          )}
+          {streamItems.map((item) => (
+            <button key={`${item.type}-${item.id}`} onClick={() => setTab(item.tab)} className="fet-card p-5 w-full text-left hover:border-primary">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs font-semibold text-primary">{item.pinned ? 'Pinned · ' : ''}{item.type}</span>
+                <span className="text-xs text-text-secondary">{formatDate(item.at)}</span>
+              </div>
+              <h4 className="font-semibold text-text-primary mt-2">{item.title}</h4>
+              {item.description && <p className="text-sm text-text-secondary mt-1 line-clamp-2">{item.description}</p>}
+              {item.due_at && <p className="text-xs text-text-secondary mt-2">Due {formatDateTime(item.due_at)}</p>}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ---------- MATERIALS ---------- */}
       {tab === 'materials' && (
@@ -614,17 +738,35 @@ const CourseDetail = ({ user }) => {
                     {ann.creator_name} · {formatDateTime(ann.published_at)}
                   </p>
                 </div>
-                {isAdmin && (
-                  <button
-                    onClick={() => handleDeleteAnnouncement(ann.id)}
-                    className="p-2 hover:bg-red-50 text-red-500 rounded-lg shrink-0"
-                    title="Delete announcement"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                )}
+                <div className="flex items-center gap-2 shrink-0">
+                  {ann.is_pinned && <span className="text-xs font-medium text-primary">Pinned</span>}
+                  {ann.can_manage && (
+                    <>
+                      <button onClick={() => handlePinAnnouncement(ann)} className="text-xs text-primary hover:underline">
+                        {ann.is_pinned ? 'Unpin' : 'Pin'}
+                      </button>
+                      <button onClick={() => setEditingAnnouncement({ id: ann.id, title: ann.title, content: ann.content })} className="text-xs text-primary hover:underline">Edit</button>
+                      <button onClick={() => handleDeleteAnnouncement(ann.id)} className="p-2 hover:bg-red-50 text-red-500 rounded-lg" title="Archive announcement">
+                        <Trash2 size={16} />
+                      </button>
+                    </>
+                  )}
+                  {!isStaff && !ann.is_read && (
+                    <button onClick={() => handleMarkRead(ann)} className="text-xs text-primary hover:underline">Mark read</button>
+                  )}
+                </div>
               </div>
               <p className="mt-2 text-sm text-text-primary whitespace-pre-wrap leading-relaxed">{ann.content}</p>
+              {editingAnnouncement?.id === ann.id && (
+                <div className="mt-4 space-y-2 border-t border-border-default pt-4">
+                  <input className="fet-input" value={editingAnnouncement.title} onChange={(e) => setEditingAnnouncement({ ...editingAnnouncement, title: e.target.value })} aria-label="Announcement title" />
+                  <textarea className="fet-input min-h-[90px]" value={editingAnnouncement.content} onChange={(e) => setEditingAnnouncement({ ...editingAnnouncement, content: e.target.value })} aria-label="Announcement message" />
+                  <div className="flex gap-2 justify-end">
+                    <button className="fet-btn-secondary" onClick={() => setEditingAnnouncement(null)}>Cancel</button>
+                    <button className="fet-btn-primary" disabled={savingAnnouncement} onClick={handleSaveAnnouncement}>Save changes</button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -753,6 +895,8 @@ const CourseDetail = ({ user }) => {
             const used = asgn.attempts_used || 0;
             const limitReached = maxSub !== 0 && used >= maxSub;
             const canSubmit = asgn.status === 'ACTIVE' && !(past && !asgn.allow_late) && !limitReached;
+            const hasTurnedIn = asgn.my_submission && asgn.my_submission.status !== 'RETURNED';
+            const showSubmitForm = !hasTurnedIn || activeSubmitAssignment === asgn.id;
             const expanded = expandedAssignment === asgn.id;
             const subs = submissions[asgn.id] || [];
             return (
@@ -795,8 +939,55 @@ const CourseDetail = ({ user }) => {
                   )}
                 </div>
 
+                {isStaff && asgn.status === 'ACTIVE' && (
+                  <div className="mt-3 flex gap-3 text-sm">
+                    <button className="text-primary hover:underline" onClick={() => setEditingAssignment({
+                      id: asgn.id,
+                      title: asgn.title,
+                      description: asgn.description,
+                      points_possible: asgn.points_possible,
+                      due_at: asgn.due_at,
+                      allow_late: asgn.allow_late,
+                      max_submissions: asgn.max_submissions,
+                    })}>Edit assignment</button>
+                    <button className="text-red-600 hover:underline" onClick={() => handleArchiveAssignment(asgn)}>Archive</button>
+                  </div>
+                )}
+                {editingAssignment?.id === asgn.id && (
+                  <div className="mt-4 border-t border-border-default pt-4 space-y-3">
+                    <input className="fet-input" value={editingAssignment.title} onChange={(e) => setEditingAssignment({ ...editingAssignment, title: e.target.value })} aria-label="Assignment title" />
+                    <textarea className="fet-input min-h-[80px]" value={editingAssignment.description} onChange={(e) => setEditingAssignment({ ...editingAssignment, description: e.target.value })} aria-label="Assignment instructions" />
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <label className="text-xs text-text-secondary">Points
+                        <input type="number" min="0" className="fet-input mt-1" value={editingAssignment.points_possible} onChange={(e) => setEditingAssignment({ ...editingAssignment, points_possible: e.target.value })} />
+                      </label>
+                      <label className="text-xs text-text-secondary">Due date
+                        <input type="datetime-local" className="fet-input mt-1" value={toLocalDateTimeInput(editingAssignment.due_at)} onChange={(e) => setEditingAssignment({ ...editingAssignment, due_at: e.target.value ? new Date(e.target.value).toISOString() : null })} />
+                      </label>
+                      <label className="text-xs text-text-secondary">Submission limit (0 = unlimited)
+                        <input type="number" min="0" className="fet-input mt-1" value={editingAssignment.max_submissions} onChange={(e) => setEditingAssignment({ ...editingAssignment, max_submissions: e.target.value })} />
+                      </label>
+                    </div>
+                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editingAssignment.allow_late} onChange={(e) => setEditingAssignment({ ...editingAssignment, allow_late: e.target.checked })} /> Accept late work</label>
+                    <div className="flex gap-2 justify-end">
+                      <button className="fet-btn-secondary" onClick={() => setEditingAssignment(null)}>Cancel</button>
+                      <button className="fet-btn-primary" disabled={savingAssignment} onClick={handleSaveAssignment}>Save changes</button>
+                    </div>
+                  </div>
+                )}
+                {!isStaff && asgn.my_submission && (
+                  <div className="mt-4 border-t border-border-default pt-3 text-sm">
+                    <p className="font-medium text-text-primary">Your latest work: {asgn.my_submission.status.toLowerCase()}</p>
+                    {asgn.my_submission.file_info && <a className="text-primary hover:underline" href={learningApi.getDownloadUrl(asgn.my_submission.file_info.id)} target="_blank" rel="noreferrer">{asgn.my_submission.file_info.original_name}</a>}
+                    {asgn.my_submission.grade !== null && <p>Grade: {asgn.my_submission.grade}{asgn.points_possible ? ` / ${asgn.points_possible}` : ''}</p>}
+                    {asgn.my_submission.feedback && <p className="text-text-secondary">Feedback: {asgn.my_submission.feedback}</p>}
+                  </div>
+                )}
+                {!isStaff && canSubmit && hasTurnedIn && !showSubmitForm && (
+                  <button className="mt-3 text-sm text-primary hover:underline" onClick={() => { setSubmitForm({ note: '', file: null }); setActiveSubmitAssignment(asgn.id); }}>Submit another attempt</button>
+                )}
                 {/* Student turn-in */}
-                {!isStaff && canSubmit && (
+                {!isStaff && canSubmit && showSubmitForm && (
                   <div className="mt-4 border-t border-border-default pt-4">
                     <p className="text-sm font-medium text-text-primary mb-2">
                       {asgn.my_submission?.status === 'RETURNED' ? 'Resubmit your work' : 'Turn in work'}
