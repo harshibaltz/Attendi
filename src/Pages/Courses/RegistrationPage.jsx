@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { BookPlus, CalendarClock, Check, Info } from 'lucide-react';
+import { BookPlus, CalendarClock, Check, Info, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { SectionHeader, Card, CardBody, CardHead, CardFoot, Pill, Callout, EmptyState, Eyebrow } from '../../components/UI';
 import { enrollmentApi, errorMessage } from '../../lib/enrollment';
@@ -14,6 +14,7 @@ const RegistrationPage = () => {
   const [selected, setSelected] = useState([]);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
+  const [query, setQuery] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,6 +68,13 @@ const RegistrationPage = () => {
   const courses = data?.courses || [];
   const eligible = courses.filter((c) => !c.is_enrolled);
   const done = courses.filter((c) => c.is_enrolled);
+  const term = query.trim().toLowerCase();
+  const visibleEligible = term
+    ? eligible.filter((c) => (
+      (c.course_code || '').toLowerCase().includes(term)
+      || (c.course_title || '').toLowerCase().includes(term)
+    ))
+    : eligible;
   const totalUnits = courses.reduce((sum, c) => sum + (c.credit_units || 0), 0);
   const pickedUnits = courses
     .filter((c) => selected.includes(c.offering_id))
@@ -122,6 +130,20 @@ const RegistrationPage = () => {
               </Callout>
             )}
 
+            {eligible.length > 0 ? (
+              <div className="relative mb-4 sm:max-w-[340px]">
+                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search course code or title"
+                  aria-label="Search available courses"
+                  className="fet-input pl-9"
+                />
+              </div>
+            ) : null}
+
             {loading ? (
               <p className="text-text-secondary text-[13px] py-6 text-center">Loading courses...</p>
             ) : eligible.length === 0 && done.length === 0 ? (
@@ -132,7 +154,7 @@ const RegistrationPage = () => {
               />
             ) : (
               <ul className="space-y-2">
-                {eligible.map((c) => {
+                {visibleEligible.map((c) => {
                   const on = selected.includes(c.offering_id);
                   return (
                     <li key={c.offering_id}>
@@ -159,6 +181,12 @@ const RegistrationPage = () => {
                     </li>
                   );
                 })}
+
+                {term && visibleEligible.length === 0 ? (
+                  <li className="py-4 text-center text-[13px] text-text-secondary">
+                    No course matches that search.
+                  </li>
+                ) : null}
 
                 {done.length > 0 ? (
                   <li className="pt-3 mt-3 border-t border-border-default">

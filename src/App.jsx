@@ -15,8 +15,11 @@ import OtpVerification from './components/Auth/OtpVerification';
 import ResetPassword from './components/Auth/ResetPassword';
 import ChangePassword from './components/Auth/ChangePassword';
 import ProfilePage from './components/Profile/ProfilePage';
+import Settings from './Pages/Settings/Settings';
+import AdminSupportMessages from './Pages/Admin/SupportMessages';
 import AttendanceDashboard from './components/Attendance/AttendanceDashboard';
 import CustomerCare from './components/Support/CustomerCare';
+import SessionDetail from './components/Attendance/SessionDetail';
 import ProjectsList from './components/Projects/ProjectsList';
 import ProjectDetails from './components/Projects/ProjectDetails';
 import ContinuousAssessment from './components/Assessment/ContinuousAssessment';
@@ -30,11 +33,12 @@ import NotificationList from './components/Notifications/NotificationList';
 import RosterUpload from './components/Admin/RosterUpload';
 import RegistrationPage from './Pages/Courses/RegistrationPage';
 import AdminDashboard from './Pages/Admin/AdminDashboard';
+import AdminUsers from './Pages/Admin/Users';
 import MobileSimulator from './components/Mobile/MobileSimulator';
 import MyCourses from './Pages/Lessons/MyCourses';
 import CourseDetail from './Pages/Lessons/CourseDetail';
 import { authApi } from './lib/auth';
-import { normalizeRole } from './lib/profile';
+import { getDisplayName, normalizeRole, normalizeUser } from './lib/profile';
 
 const RequireRole = ({ role, children }) => {
   let userRole = 'student';
@@ -46,7 +50,8 @@ const RequireRole = ({ role, children }) => {
     userRole = localStorage.getItem('fet_user_role') || 'student';
   }
 
-  if (normalizeRole(userRole) !== normalizeRole(role)) {
+  const allowed = Array.isArray(role) ? role : [role];
+  if (!allowed.some((r) => normalizeRole(userRole) === normalizeRole(r))) {
     return <Navigate to="/" replace />;
   }
   return children;
@@ -94,14 +99,14 @@ function App() {
       try {
         // Session is validated against the backend using httpOnly cookies.
         const response = await authApi.me();
-        const userData = response.data?.data ?? response.data;
+        const userData = normalizeUser(response.data?.data ?? response.data);
         setUser(userData);
         setIsAuthenticated(true);
         // Update cached user snapshot
         localStorage.setItem('fet_auth', 'true');
         localStorage.setItem('fet_user', JSON.stringify(userData));
         localStorage.setItem('fet_user_role', userData.role || 'student');
-        localStorage.setItem('fet_user_name', userData.fullName || userData.email?.split('@')[0] || 'User');
+        localStorage.setItem('fet_user_name', getDisplayName(userData, 'User'));
       } catch (error) {
         // No valid session (or refresh failed) — clear cache, show login.
         localStorage.removeItem('fet_auth');
@@ -118,7 +123,7 @@ function App() {
     const onProfileUpdate = () => {
       try {
         const u = JSON.parse(localStorage.getItem('fet_user') || '{}');
-        if (u && u.fullName) setUser(u);
+        if (u) setUser(normalizeUser(u));
       } catch { /* ignore */ }
     };
     const onSessionExpired = () => {
@@ -136,12 +141,16 @@ function App() {
   }, []);
 
   const handleLogin = (userData) => {
+    const normalized = normalizeUser(userData);
     setIsAuthenticated(true);
-    setUser(userData);
+    setUser(normalized);
+    setShowSignUp(false);
     localStorage.setItem('fet_auth', 'true');
-    localStorage.setItem('fet_user', JSON.stringify(userData));
-    localStorage.setItem('fet_user_role', userData.role || 'student');
-    localStorage.setItem('fet_user_name', userData.fullName || userData.email?.split('@')[0] || 'User');
+    localStorage.setItem('fet_user', JSON.stringify(normalized));
+    localStorage.setItem('fet_user_role', normalized.role || 'student');
+    localStorage.setItem('fet_user_name', getDisplayName(normalized, 'User'));
+    // The authenticated shell always opens on the role-aware dashboard.
+    window.history.replaceState({}, '', '/');
   };
 
   const handleLogout = async () => {
@@ -234,7 +243,7 @@ function App() {
     );
   }
 
-  const userName = user?.fullName || user?.email?.split('@')[0] || 'User';
+  const userName = getDisplayName(user, 'User');
   const userRole = user?.role || 'student';
 
   // BR-003: a roster-created account signs in with a temporary password and
@@ -262,6 +271,10 @@ function App() {
                   <Route path="/lessons/:offeringId" element={<CourseDetail user={user} />} />
                   <Route path="/attendance" element={<AttendanceDashboard user={user} />} />
                   <Route path="/support" element={<CustomerCare user={user} />} />
+                  <Route
+                    path="/attendance/sessions/:sessionId"
+                    element={<RequireRole role={['lecturer', 'admin']}><SessionDetail /></RequireRole>}
+                  />
                 <Route path="/projects" element={<ProjectsList />} />
                 <Route path="/projects/:id" element={<ProjectDetails />} />
                 <Route path="/assessment" element={<ContinuousAssessment user={user} />} />
@@ -279,7 +292,7 @@ function App() {
                 />
                 <Route path="/academic" element={<AcademicCalendar />} />
                 <Route path="/mobile-simulator" element={<MobileSimulator />} />
-                <Route path="/settings" element={<ProfilePage user={user} />} />
+                <Route path="/settings" element={<Settings user={user} />} />
                 <Route
                   path="/admin/dashboard"
                   element={<RequireRole role="admin"><AdminDashboard user={user} /></RequireRole>}
@@ -293,6 +306,10 @@ function App() {
                   element={<RequireRole role="admin"><RosterUpload /></RequireRole>}
                 />
                 <Route
+                  path="/admin/support"
+                  element={<RequireRole role="admin"><AdminSupportMessages /></RequireRole>}
+                />
+                <Route
                   path="/change-password"
                   element={<ChangePassword user={user} forced={mustChangePassword} />}
                 />
@@ -302,7 +319,11 @@ function App() {
                 <Route path="/groups" element={<Navigate to="/projects" replace />} />
                 <Route path="/contribution" element={<Navigate to="/projects" replace />} />
                 <Route path="/courses" element={<Navigate to="/lessons" replace />} />
-                <Route path="/admin/users" element={<Navigate to="/admin/roster" replace />} />
+                <Route path="/classrooms" element={<Navigate to="/lessons" replace />} />
+                <Route
+                  path="/admin/users"
+                  element={<RequireRole role="admin"><AdminUsers user={user} /></RequireRole>}
+                />
                 <Route
                   path="*"
                   element={mustChangePassword

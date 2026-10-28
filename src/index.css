@@ -389,11 +389,82 @@
     box-shadow: 0 0 0 3px rgb(var(--primary-bg));
   }
 
+  /* A native select paints its own arrow on top of the text. The sign-up
+     selects replace that arrow with their own chevron, so the option text has
+     to truncate rather than slide underneath it. */
+  .fet-auth-panel select.fet-input,
+  .fet-auth-panel select.fet-select {
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
   .fet-label {
     display: block; font-size: 13px; font-weight: 600;
     color: rgb(var(--ink)); margin-bottom: 6px;
   }
 }
+
+/* ============================================================
+   AUTH SCREENS
+   Grey panel with white fields: on the old white panel the inputs
+   were white too, so they had no edge and the placeholder was the
+   only thing giving them away. The panel takes the canvas tone,
+   the fields stay surface (white in light, dark in dark) and pick
+   up a hairline + hairline shadow, and the placeholder drops to a
+   lighter grey so typed text clearly wins.
+   ============================================================ */
+@layer components {
+  .fet-auth-panel { background-color: rgb(var(--canvas)); }
+
+  .fet-auth-panel .fet-input,
+  .fet-auth-panel .fet-select {
+    background-color: rgb(var(--surface));
+    border-color: rgb(var(--line-2));
+    box-shadow: var(--sh-1);
+  }
+
+  .fet-auth-panel .fet-input::placeholder,
+  .fet-auth-panel .fet-select::placeholder {
+    color: rgb(var(--ink-3) / .75);
+  }
+}
+
+/* ============================================================
+   INFO TOOLTIP
+   Small "(i)" affordance next to a term, opened on hover and on
+   click/tap/focus. The bubble is position:fixed so it is never
+   clipped by a card's overflow, and flips below when asked.
+   ============================================================ */
+.ui-infotip-wrap { position: relative; display: inline-flex; vertical-align: middle; }
+.ui-infotip-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; border-radius: 50%;
+  color: rgb(var(--ink-3)); background: transparent; border: 0;
+  cursor: help; padding: 0;
+  transition: color .15s ease, background-color .15s ease;
+}
+.ui-infotip-btn:hover,
+.ui-infotip-btn:focus-visible { color: rgb(var(--primary)); background: rgb(var(--primary-bg)); }
+.ui-infotip-btn:focus-visible { outline: 2px solid rgb(var(--primary)); outline-offset: 1px; }
+.ui-infotip {
+  position: fixed; z-index: 60;
+  transform: translateX(-50%);
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  background: rgb(var(--nav-2));
+  color: #fff;
+  font-size: 11.5px; font-weight: 450; line-height: 1.45; text-align: left;
+  box-shadow: var(--sh-pop);
+  pointer-events: none;
+  box-sizing: border-box;
+}
+.ui-infotip::after {
+  content: ''; position: absolute; left: 50%; transform: translateX(-50%);
+  border: 5px solid transparent;
+}
+.ui-infotip[data-placement='top']::after { top: 100%; border-top-color: rgb(var(--nav-2)); }
+.ui-infotip[data-placement='bottom']::after { bottom: 100%; border-bottom-color: rgb(var(--nav-2)); }
 
 /* ============================================================
    PILL, TAG, BADGE
@@ -639,6 +710,27 @@
 }
 .fet-welcome-banner > * { position: relative; z-index: 1; }
 
+/* Light typography for dark surfaces.
+   The base layer sets `h1..h6 { color: var(--ink) }`, which is near-invisible
+   on the dark blue banner gradient because a base-layer element selector beats
+   the inherited `color:#fff` on the banner. These unlayered descendant rules
+   win over the layered base rule regardless of specificity, so headings inside
+   a dark banner always render white. */
+.fet-welcome-banner h1,
+.fet-welcome-banner h2,
+.fet-welcome-banner h3,
+.fet-welcome-banner h4,
+.fet-welcome-banner h5,
+.fet-welcome-banner h6,
+.ui-hero-wash h1,
+.ui-hero-wash h2,
+.ui-hero-wash h3,
+.ui-hero-wash h4,
+.ui-hero-wash h5,
+.ui-hero-wash h6 {
+  color: #fff;
+}
+
 /* ============================================================
    ANNOUNCEMENTS
    ============================================================ */
@@ -689,6 +781,36 @@
   border-color: rgb(var(--primary-line));
   background: rgb(var(--surface-2));
 }
+
+/* Swipe-to-delete shell. The card content slides left over a revealed
+   destructive action. The .ui-ann keeps its own styling; this only adds
+   the track + reveal underneath it. */
+.ui-swipe {
+  position: relative;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  touch-action: pan-y;
+}
+.ui-swipe-track {
+  position: relative;
+  z-index: 1;
+  transition: transform .22s ease;
+  will-change: transform;
+}
+.ui-swipe-track.is-dragging { transition: none; }
+.ui-swipe-delete {
+  position: absolute; inset: 0 0 0 auto;
+  width: 96px;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  flex-direction: column;
+  background: rgb(var(--bd));
+  color: #fff; border: 0;
+  font-size: 11.5px; font-weight: 600;
+  cursor: pointer;
+}
+.ui-swipe-delete:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+.ui-swipe:not(:hover) .ui-swipe-delete { } /* keep action tappable; state driven by transform */
+
 .ui-ann-top { display: flex; gap: 13px; padding: 16px 18px 0; }
 .ui-ann-title { font-size: 15.5px; font-weight: 600; letter-spacing: -.012em; line-height: 1.35; }
 .ui-ann-body { font-size: 13.5px; line-height: 1.68; color: rgb(var(--ink-2)); margin: 7px 0 0 47px; max-width: 74ch; }
@@ -734,6 +856,17 @@
   .fet-btn-primary, .fet-btn-secondary, .fet-btn-danger,
   .ui-btn-primary, .ui-btn-secondary, .ui-btn-danger { padding: 11px 15px; }
   .fet-input, .ui-input, .fet-select, .ui-select { padding-top: 11px; padding-bottom: 11px; }
+
+  /* The sign-up selects (Department, Level) carry a leading icon and their own
+     chevron, so the option text has less room than a plain input. Give them a
+     taller box on phones so the label, the icon and the long department names
+     ("Electrical and Electronic Engineering") never collide. */
+  .fet-auth-panel select.fet-input,
+  .fet-auth-panel select.fet-select {
+    min-height: 46px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
 
   .ui-course-figs { flex-wrap: wrap; }
   .ui-course-fig { min-width: 50%; border-bottom: 1px solid rgb(var(--line)); }

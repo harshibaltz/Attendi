@@ -12,6 +12,7 @@ const TONE = {
   ANNOUNCEMENT: 'in',
   ENROLLMENT: 'ok',
   CARRY_OVER: 'warn',
+  PLATFORM_UPDATE: 'hub',
 };
 
 const NotificationList = () => {
@@ -26,13 +27,24 @@ const NotificationList = () => {
     try {
       setRows((await notificationsApi.list(filter === 'unread')) || []);
     } catch (err) {
-      setError(errorMessage(err, 'Could not load notifications.'));
+      setError(errorMessage(err, 'Could not load notifications. Please try again.'));
     } finally {
       setLoading(false);
     }
   }, [filter]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const id = setInterval(load, 30000);
+    const onFocus = () => load();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [load]);
 
   const unread = rows.filter((n) => !n.read_at).length;
 

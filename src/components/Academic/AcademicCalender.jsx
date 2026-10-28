@@ -55,15 +55,15 @@ const AcademicCalendar = () => {
             <h2 className="text-2xl font-bold">Academic Calendar</h2>
             {active ? (
               <>
-                <p className="text-[#8683BA] mt-1">
+                <p className="text-white/70 mt-1">
                   {active.name} • {active.academic_year}
                 </p>
-                <p className="text-[#8683BA] text-sm mt-1">
+                <p className="text-white/70 text-sm mt-1">
                   {formatDate(active.start_date)} – {formatDate(active.end_date)}
                 </p>
               </>
             ) : (
-              <p className="text-[#8683BA] mt-1">
+              <p className="text-white/70 mt-1">
                 No semester is active — registration and enrolment are closed.
               </p>
             )}

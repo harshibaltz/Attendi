@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, X, Trash2, Bell, Pin, RefreshCw, Loader2, Megaphone } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Plus, X, Trash2, Pin, Loader2, Megaphone, Search, Check } from 'lucide-react';
 import AnnouncementForm from './AnnouncementForm';
 import { announcementsApi } from '../../lib/announcements';
 import { learningApi } from '../../lib/learning';
@@ -17,12 +17,125 @@ const formatDate = (iso) => {
   return d.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
 };
 
+const REVEAL = 96;      // width of the revealed Delete action, in px
+const OPEN_AT = -52;    // drag past this (negative = left) to latch open
+
+/**
+ * A row that can be dragged left to reveal a destructive action underneath.
+ *
+ * Pointer events cover mouse, touch and pen. The wrapper only hijacks the
+ * gesture once it is clearly horizontal, so vertical page scrolling still
+ * works (`touch-action: pan-y`). A tap that never became a drag falls through
+ * to the child, so clicking the card still marks it read.
+ */
+const SwipeRow = ({ children, onDelete, disabled = false, deleting = false }) => {
+  const [offset, setOffset] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const start = useRef({ x: 0, y: 0, base: 0, active: false, decided: false, horiz: false });
+  const draggedRef = useRef(false);
+  const trackRef = useRef(null);
+
+  const onPointerDown = (e) => {
+    if (disabled) return;
+    start.current = { x: e.clientX, y: e.clientY, base: offset, active: true, decided: false, horiz: false };
+  };
+
+  const onPointerMove = (e) => {
+    const s = start.current;
+    if (!s.active) return;
+    const dx = e.clientX - s.x;
+    const dy = e.clientY - s.y;
+    if (!s.decided) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      s.decided = true;
+      s.horiz = Math.abs(dx) > Math.abs(dy);
+      if (s.horiz) {
+        draggedRef.current = true;
+        setDragging(true);
+        try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+      } else {
+        s.active = false;
+        return;
+      }
+    }
+    if (!s.horiz) return;
+    // Clamp between fully-open (left) and a little rubber-band past closed.
+    let next = s.base + dx;
+    if (next > 12) next = 12;
+    if (next < -REVEAL - 24) next = -REVEAL - 24;
+    setOffset(next);
+  };
+
+  const finish = (e) => {
+    const s = start.current;
+    if (!s.active) return;
+    s.active = false;
+    if (!s.horiz) return;
+    setDragging(false);
+    setOffset(offset <= OPEN_AT ? -REVEAL : 0);
+    if (e && e.currentTarget && e.currentTarget.releasePointerCapture) {
+      try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+    }
+  };
+
+  const handleDelete = async () => {
+    setOffset(-REVEAL);
+    await onDelete();
+  };
+
+  useEffect(() => {
+    if (offset === 0) return undefined;
+    const onDown = (e) => {
+      if (trackRef.current && !trackRef.current.contains(e.target)) setOffset(0);
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [offset]);
+
+  return (
+    <div className="ui-swipe">
+      <button
+        type="button"
+        className="ui-swipe-delete"
+        onClick={handleDelete}
+        disabled={deleting}
+        aria-label="Delete announcement"
+        tabIndex={offset < 0 ? 0 : -1}
+      >
+        {deleting ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}
+        Delete
+      </button>
+      <div
+        ref={trackRef}
+        className={`ui-swipe-track${dragging ? ' is-dragging' : ''}`}
+        style={{ transform: `translateX(${offset}px)` }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={finish}
+        onPointerCancel={finish}
+        onPointerLeave={(e) => { if (start.current.active) finish(e); }}
+        onClickCapture={(e) => {
+          // A drag must not also fire the card's click (which marks it read).
+          if (draggedRef.current) {
+            draggedRef.current = false;
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+};
+
 const AnnouncementList = ({ user }) => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [query, setQuery] = useState('');
   // Needed so a course-scoped announcement can name a course.
   const [myOfferings, setMyOfferings] = useState([]);
   const role = normalizeRole(user?.role);
@@ -47,7 +160,10 @@ const AnnouncementList = ({ user }) => {
     setError('');
     try {
       const data = await announcementsApi.list();
-      setItems(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      let dismissed = [];
+      try { dismissed = JSON.parse(localStorage.getItem('fet_dismissed_announcements') || '[]'); } catch { dismissed = []; }
+      setItems(list.filter((a) => !dismissed.includes(a.id)));
     } catch (err) {
       setError(err.response?.data?.error?.message || 'Could not load announcements.');
     } finally {
@@ -67,6 +183,15 @@ const AnnouncementList = ({ user }) => {
     } catch {
       setItems((prev) => prev.map((a) => (a.id === id ? { ...a, is_read: false, read_count: a.read_count - 1 } : a)));
     }
+  };
+
+  const markAllRead = async () => {
+    const targets = items.filter((a) => !a.is_read);
+    if (!targets.length) return;
+    setItems((prev) => prev.map((a) => (a.is_read ? a : { ...a, is_read: true, read_count: a.read_count + 1 })));
+    await Promise.all(targets.map((a) => announcementsApi.markRead(a.id).catch(() => {
+      setItems((prev) => prev.map((x) => (x.id === a.id ? { ...x, is_read: false, read_count: x.read_count - 1 } : x)));
+    })));
   };
 
   const togglePin = async (item) => {
@@ -96,13 +221,53 @@ const AnnouncementList = ({ user }) => {
     }
   };
 
+  // Swipe-to-delete. Managers (author/admin) really delete it for everyone;
+  // everyone else can only dismiss it from their own view, so we hide it
+  // locally and remember that choice. The backend has no per-user dismiss.
+  const dismissBySwipe = async (item) => {
+    if (item.can_manage) {
+      setBusyId(item.id);
+      setError('');
+      try {
+        await announcementsApi.remove(item.id);
+        await load();
+      } catch (err) {
+        setError(err.response?.data?.error?.message || 'Could not remove the announcement.');
+        setBusyId(null);
+      }
+      return;
+    }
+    setItems((prev) => prev.filter((a) => a.id !== item.id));
+    try {
+      const key = 'fet_dismissed_announcements';
+      const stored = JSON.parse(localStorage.getItem(key) || '[]');
+      if (!stored.includes(item.id)) {
+        localStorage.setItem(key, JSON.stringify([...stored, item.id]));
+      }
+    } catch {
+      /* private mode / quota — the in-memory hide is enough for this session */
+    }
+  };
+
   const handleSaved = async () => {
     setShowForm(false);
     await load();
   };
 
-  const pinned = items.find((a) => a.is_pinned) || null;
-  const rest = pinned ? items.filter((a) => a.id !== pinned.id) : items;
+  // Search matches the title, the body, or the course/audience tag
+  // (e.g. "CEF331"), case-insensitively.
+  const q = query.trim().toLowerCase();
+  const visible = useMemo(() => {
+    if (!q) return items;
+    return items.filter((a) => (
+      (a.title || '').toLowerCase().includes(q)
+      || (a.content || '').toLowerCase().includes(q)
+      || (a.audience_label || '').toLowerCase().includes(q)
+    ));
+  }, [items, q]);
+
+  const pinned = visible.find((a) => a.is_pinned) || null;
+  const rest = pinned ? visible.filter((a) => a.id !== pinned.id) : visible;
   const unread = items.filter((a) => !a.is_read).length;
 
   const Receipt = ({ item }) => {
@@ -138,6 +303,31 @@ const AnnouncementList = ({ user }) => {
 
       {error ? <Callout tone="bd" icon={AlertCircleIcon}>{error}</Callout> : null}
 
+      {/* Search sits directly under the header, above the list. */}
+      {!loading && items.length > 0 ? (
+        <div className="relative">
+          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search announcements by title, content, or course (e.g. CEF331)..."
+            className="fet-input pl-9"
+            aria-label="Search announcements"
+          />
+          {query ? (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-text-muted transition-colors hover:bg-page-bg"
+              aria-label="Clear search"
+            >
+              <X size={15} />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       {loading ? (
         <Card accent="announcements">
           <div className="flex items-center justify-center gap-2 py-12 text-sm text-text-secondary">
@@ -166,7 +356,29 @@ const AnnouncementList = ({ user }) => {
       {unread > 0 ? (
         <div className="flex items-center gap-2">
           <Pill tone="in">{unread} unread</Pill>
+          <button
+            type="button"
+            onClick={markAllRead}
+            className="text-[12px] font-medium text-primary hover:underline"
+          >
+            Mark all as read
+          </button>
         </div>
+      ) : null}
+
+      {!loading && q && visible.length === 0 ? (
+        <Card accent="announcements">
+          <EmptyState
+            icon={Search}
+            title="No matching announcements"
+            subtitle={`Nothing matches "${query.trim()}". Try a different word or clear the search.`}
+            action={(
+              <button type="button" onClick={() => setQuery('')} className="fet-btn-secondary">
+                Clear search
+              </button>
+            )}
+          />
+        </Card>
       ) : null}
 
       {/* The pinned announcement is the one card that must be seen. */}
@@ -224,68 +436,80 @@ const AnnouncementList = ({ user }) => {
         {rest.map((item) => {
           const expired = item.is_expired;
           return (
-            <div
+            <SwipeRow
               key={item.id}
-              className={`ui-ann ${item.is_read ? 'ui-ann-read' : 'ui-ann-unread'}`}
+              onDelete={() => dismissBySwipe(item)}
+              deleting={busyId === item.id}
             >
-              <div className="ui-ann-top">
-                <Avatar name={item.creator_name} size={34} tone={item.is_read ? '#4A5261' : '#8A4661'} />
-                <div className="min-w-0 flex-1">
-                  <div className="mb-1 flex flex-wrap items-center gap-2">
-                    <span className="ui-ann-title">{item.title}</span>
-                    {!item.is_read ? <Pill tone="in">New</Pill> : null}
-                    {item.is_pinned ? <Pill tone="wn">Pinned</Pill> : null}
+              <div className={`ui-ann ${item.is_read ? 'ui-ann-read' : 'ui-ann-unread'}`}>
+                <div className="ui-ann-top">
+                  <Avatar name={item.creator_name} size={34} tone={item.is_read ? '#4A5261' : '#8A4661'} />
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-1 flex flex-wrap items-center gap-2">
+                      <span className="ui-ann-title">{item.title}</span>
+                      {!item.is_read ? <Pill tone="in">New</Pill> : null}
+                      {item.is_pinned ? <Pill tone="wn">Pinned</Pill> : null}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Tag>{item.audience_label}</Tag>
+                      <span className="text-[11.5px] text-text-muted">{formatDate(item.published_at)}</span>
+                      {expired ? <Pill tone="wn" dot>Expired</Pill> : null}
+                    </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Tag>{item.audience_label}</Tag>
-                    <span className="text-[11.5px] text-text-muted">{formatDate(item.published_at)}</span>
-                    {expired ? <Pill tone="wn" dot>Expired</Pill> : null}
-                  </div>
+                  {item.can_manage ? (
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => togglePin(item)}
+                        disabled={busyId === item.id}
+                        className="fet-btn-secondary"
+                        style={{ padding: '6px 10px' }}
+                        title={item.is_pinned ? 'Unpin' : 'Pin to the top'}
+                        aria-label={item.is_pinned ? `Unpin ${item.title}` : `Pin ${item.title}`}
+                      >
+                        <Pin size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => remove(item)}
+                        disabled={busyId === item.id}
+                        className="fet-btn-danger"
+                        style={{ padding: '6px 10px' }}
+                        aria-label={`Remove ${item.title}`}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
-                {item.can_manage ? (
-                  <div className="flex shrink-0 items-center gap-1.5">
+
+                <button
+                  type="button"
+                  onClick={() => markRead(item.id)}
+                  className="block w-full text-left"
+                  aria-label={item.is_read ? undefined : `Mark ${item.title} as read`}
+                >
+                  <p className="ui-ann-body">{item.content}</p>
+                </button>
+
+                <div className="ui-ann-foot">
+                  <span className="text-[11.5px] text-text-muted">
+                    Posted by {item.creator_name}
+                  </span>
+                  <div className="flex-1" />
+                  {!item.is_read ? (
                     <button
                       type="button"
-                      onClick={() => togglePin(item)}
-                      disabled={busyId === item.id}
-                      className="fet-btn-secondary"
-                      style={{ padding: '6px 10px' }}
-                      title={item.is_pinned ? 'Unpin' : 'Pin to the top'}
-                      aria-label={item.is_pinned ? `Unpin ${item.title}` : `Pin ${item.title}`}
+                      onClick={() => markRead(item.id)}
+                      className="inline-flex items-center gap-1 text-[12px] font-medium text-primary hover:underline"
                     >
-                      <Pin size={15} />
+                      <Check size={13} /> Mark as read
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => remove(item)}
-                      disabled={busyId === item.id}
-                      className="fet-btn-danger"
-                      style={{ padding: '6px 10px' }}
-                      aria-label={`Remove ${item.title}`}
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                ) : null}
+                  ) : null}
+                  {item.can_manage ? <Receipt item={item} /> : null}
+                </div>
               </div>
-
-              <button
-                type="button"
-                onClick={() => markRead(item.id)}
-                className="block w-full text-left"
-                disabled={item.is_read}
-              >
-                <p className="ui-ann-body">{item.content}</p>
-              </button>
-
-              <div className="ui-ann-foot">
-                <span className="text-[11.5px] text-text-muted">
-                  Posted by {item.creator_name}
-                </span>
-                <div className="flex-1" />
-                {item.can_manage ? <Receipt item={item} /> : null}
-              </div>
-            </div>
+            </SwipeRow>
           );
         })}
       </div>

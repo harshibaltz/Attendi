@@ -7,6 +7,7 @@ import {
 import { profileApi, normalizeRole } from '../../lib/profile';
 import { projectsApi } from '../../lib/projects';
 import { authApi } from '../../lib/auth';
+import { APP_BUILD } from '../../lib/appBuild';
 import { statusBadge } from '../Projects/projectUi';
 
 const getInitials = (name) => {
@@ -23,12 +24,22 @@ const roleLabel = (role) => {
 
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString() : '—');
 
+const DELETE_REASONS = [
+  { value: 'NO_LONGER_NEEDED', label: 'I no longer need the account' },
+  { value: 'GRADUATED', label: 'I graduated or left the university' },
+  { value: 'PRIVACY', label: 'Privacy concerns' },
+  { value: 'TOO_MANY_ISSUES', label: 'Problems or bugs with the platform' },
+  { value: 'SWITCHING_ACCOUNT', label: 'I want to create a new account' },
+  { value: 'OTHER', label: 'Other' },
+];
+
 const ProfilePage = () => {
   const navigate = useNavigate();
   const [me, setMe] = useState(null);
   const [activity, setActivity] = useState(null);
   const [lecturerProjects, setLecturerProjects] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [activityRefreshing, setActivityRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -36,7 +47,12 @@ const ProfilePage = () => {
   const [form, setForm] = useState({});
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteDone, setDeleteDone] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleteImprovement, setDeleteImprovement] = useState('');
 
   const role = normalizeRole(me?.role || localStorage.getItem('fet_user_role'));
   const isStudent = role === 'student';
@@ -65,12 +81,30 @@ const ProfilePage = () => {
     load();
   }, [load]);
 
+  // The "Attendance by Course" card has its own Refresh. It must only re-read
+  // the activity payload - calling the page-level load() replaced the whole
+  // profile with the loading placeholder and looked like a full page reload.
+  const refreshActivity = useCallback(async () => {
+    if (!me?.id) return;
+    setActivityRefreshing(true);
+    try {
+      setActivity(await profileApi.activity(me.id));
+    } catch {
+      // Keep showing the last good snapshot instead of blanking the card.
+    } finally {
+      setActivityRefreshing(false);
+    }
+  }, [me?.id]);
+
   const startEdit = () => {
     const sp = me?.student_profile || {};
     const lp = me?.lecturer_profile || {};
     setForm({
       first_name: me?.first_name || '',
       last_name: me?.last_name || '',
+      email: me?.email || '',
+      student_number: sp.student_number || '',
+      staff_number: lp.staff_number || '',
       date_of_birth: me?.date_of_birth || '',
       personal_email: sp.personal_email || '',
       level: sp.level || '',
@@ -88,9 +122,11 @@ const ProfilePage = () => {
       const payload = {
         first_name: form.first_name,
         last_name: form.last_name,
+        email: form.email.trim(),
         date_of_birth: form.date_of_birth || null,
       };
       if (isStudent) {
+        payload.student_number = form.student_number.trim();
         payload.personal_email = form.personal_email;
         payload.level = form.level;
         payload.bio = form.bio;
@@ -98,6 +134,7 @@ const ProfilePage = () => {
         payload.achievements = form.achievements.split(',').map((s) => s.trim()).filter(Boolean);
       }
       if (isLecturer) {
+        payload.staff_number = form.staff_number.trim();
         payload.bio = form.bio;
       }
       await profileApi.updateMe(payload);
@@ -111,30 +148,73 @@ const ProfilePage = () => {
       window.dispatchEvent(new CustomEvent('fet-profile-updated'));
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
-      const msg = err.response?.data?.error?.message || err.response?.data?.error?.details
-        ? JSON.stringify(err.response.data.error.details)
-        : 'Could not save your profile.';
-      setError(typeof msg === 'string' ? msg : 'Could not save your profile.');
+      const apiError = err.response?.data?.error;
+      const details = apiError?.details;
+      let detail = '';
+      if (typeof details === 'string') {
+        detail = details;
+      } else if (details && typeof details === 'object') {
+        const first = Object.values(details)[0];
+        detail = Array.isArray(first) ? first[0] : (typeof first === 'string' ? first : '');
+      }
+      setError(detail || apiError?.message || 'Could not save your profile.');
     } finally {
       setSaving(false);
     }
+  };
+
+  const openDeleteConfirm = () => {
+    setDeleteError('');
+    setDeleteDone(false);
+    setDeletePassword('');
+    setDeleteConfirm('');
+    setDeleteReason('');
+    setDeleteImprovement('');
+    setShowDeleteConfirm(true);
   };
 
   const handleDeleteAccount = async () => {
     setDeleting(true);
     setDeleteError('');
     try {
-      await authApi.deleteAccount();
-      // The server clears the JWT cookies and revokes every session. Mirror
-      // that locally and drop the shell back to the login screen.
-      ['fet_auth', 'fet_user', 'fet_user_role', 'fet_user_name', 'access_token']
-        .forEach((key) => localStorage.removeItem(key));
-      window.dispatchEvent(new CustomEvent('fet:session-expired'));
+      await authApi.deleteAccount({
+        password: deletePassword,
+        confirm: deleteConfirm,
+        reason: deleteReason,
+        improvement: deleteImprovement.trim(),
+      });
+      setDeleteDone(true);
+      setDeleting(false);
+      // Leave the farewell message on screen briefly, then drop the local
+      // session. The server has already cleared the httpOnly cookies.
+      window.setTimeout(() => {
+        ['fet_auth', 'fet_user', 'fet_user_role', 'fet_user_name', 'access_token']
+          .forEach((key) => localStorage.removeItem(key));
+        window.dispatchEvent(new CustomEvent('fet:session-expired'));
+      }, 2200);
     } catch (err) {
-      setDeleteError(err.response?.data?.error?.message || 'Could not delete your account.');
+      const detail = err.response?.data?.error?.details;
+      setDeleteError(
+        err.response?.data?.error?.message
+          || (detail ? JSON.stringify(detail) : '')
+          || 'Could not delete your account. Please try again.',
+      );
       setDeleting(false);
     }
   };
+
+  const canDelete = Boolean(
+    deleteReason
+    && deletePassword
+    && deleteConfirm.trim().toUpperCase() === 'DELETE'
+    && (deleteReason !== 'OTHER' || deleteImprovement.trim())
+  );
+
+  const canSave = Boolean(
+    form.email?.trim()
+    && (!isStudent || form.student_number?.trim())
+    && (!isLecturer || form.staff_number?.trim())
+  );
 
   if (loading) {
     return <div className="text-center py-16 text-text-secondary text-[13px]">Loading profile...</div>;
@@ -188,12 +268,12 @@ const ProfilePage = () => {
             </div>
             <div className="text-center sm:text-left flex-1">
               <h3 className="text-lg md:text-xl font-bold">{me.full_name || me.email}</h3>
-              <p className="text-[#8683BA] text-sm capitalize">{roleLabel(role)}</p>
+              <p className="text-white/70 text-sm capitalize">{roleLabel(role)}</p>
               {isStudent && sp.department && (
-                <p className="text-[#8683BA] text-xs">{sp.department.name} • Level {sp.level || '—'}</p>
+                <p className="text-white/70 text-xs">{sp.department.name} • Level {sp.level || '—'}</p>
               )}
               {isLecturer && lp.department && (
-                <p className="text-[#8683BA] text-xs">{lp.department.name} {lp.title ? `• ${lp.title}` : ''}</p>
+                <p className="text-white/70 text-xs">{lp.department.name} {lp.title ? `• ${lp.title}` : ''}</p>
               )}
             </div>
           </div>
@@ -213,11 +293,36 @@ const ProfilePage = () => {
             </Field>
 
             <Field label={isStudent ? 'Matricule Number' : 'Staff / ID'}>
-              <p>{isStudent ? (sp.student_number || '-') : (lp.staff_number || '-')}</p>
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={isStudent ? form.student_number : form.staff_number}
+                  onChange={(e) => setForm({
+                    ...form,
+                    [isStudent ? 'student_number' : 'staff_number']: e.target.value,
+                  })}
+                  className="fet-input"
+                  autoComplete="off"
+                  required
+                />
+              ) : (
+                <p>{isStudent ? (sp.student_number || '-') : (lp.staff_number || '-')}</p>
+              )}
             </Field>
 
-            <Field label="Email">
-              <p className="flex items-center gap-1.5"><Mail size={14} className="text-text-secondary" />{me.email}</p>
+            <Field label="Institutional Email">
+              {isEditing ? (
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  className="fet-input"
+                  autoComplete="email"
+                  required
+                />
+              ) : (
+                <p className="flex items-center gap-1.5"><Mail size={14} className="text-text-secondary" />{me.email}</p>
+              )}
             </Field>
 
             {isStudent && (
@@ -303,7 +408,7 @@ const ProfilePage = () => {
 
           {isEditing && (
             <div className="mt-6 pt-6 border-t border-border-default flex justify-end">
-              <button onClick={handleSave} disabled={saving} className="fet-btn-primary flex items-center gap-2">
+              <button onClick={handleSave} disabled={saving || !canSave} className="fet-btn-primary flex items-center gap-2">
                 <Save size={18} />
                 {saving ? 'Saving...' : 'Save Changes'}
               </button>
@@ -337,7 +442,15 @@ const ProfilePage = () => {
           <div className="fet-card p-4 md:p-6">
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-[15px] font-bold text-text-primary">Attendance by Course</h4>
-              <button onClick={load} className="text-primary text-[13px] flex items-center gap-1"><RefreshCw size={14} /> <span className="hidden sm:inline">Refresh</span></button>
+              <button
+                type="button"
+                onClick={refreshActivity}
+                disabled={activityRefreshing}
+                className="text-primary text-[13px] flex items-center gap-1 disabled:opacity-60"
+              >
+                <RefreshCw size={14} className={activityRefreshing ? 'animate-spin' : ''} />
+                <span className="hidden sm:inline">{activityRefreshing ? 'Refreshing…' : 'Refresh'}</span>
+              </button>
             </div>
             {activity.attendance_by_course.length === 0 ? (
               <p className="text-text-secondary text-[13px] py-4 text-center">No attendance recorded yet.</p>
@@ -460,50 +573,136 @@ const ProfilePage = () => {
       <div className="fet-card p-4 md:p-6" style={{ borderColor: 'rgb(var(--bd-line))' }}>
         <h4 className="text-[15px] font-bold text-danger">Danger zone</h4>
         <p className="mt-1 text-[13px] text-text-secondary">
-          Deleting your account signs you out on every device and you will no longer be able to
-          sign in. Your academic records stay with the school.
+          Deleting your account signs you out on every device and releases your email and
+          matricule so you can register again. Your academic records stay with the school and
+          remain visible to administrators only.
         </p>
         <button
           type="button"
-          onClick={() => { setDeleteError(''); setShowDeleteConfirm(true); }}
+          onClick={openDeleteConfirm}
           className="fet-btn-danger mt-3 inline-flex items-center gap-2"
         >
           <Trash2 size={15} /> Delete my account
         </button>
-        {deleteError && <p className="mt-2 text-[13px] text-danger">{deleteError}</p>}
       </div>
+
+      {/* Which build this device is actually running. If the line is missing
+          after a refresh, the device never received the current shell. */}
+      <p className="pb-2 text-center text-[11px] text-text-muted select-none">
+        App build · {APP_BUILD}
+      </p>
 
       {showDeleteConfirm && (
         <div
           className="fixed inset-0 z-[90] grid place-items-center bg-black/50 p-4"
           role="dialog"
           aria-modal="true"
-          onClick={() => { if (!deleting) setShowDeleteConfirm(false); }}
+          onClick={() => { if (!deleting && !deleteDone) setShowDeleteConfirm(false); }}
         >
-          <div className="w-full max-w-sm rounded-xl bg-surface p-5 shadow-modal" onClick={(e) => e.stopPropagation()}>
-            <h4 className="text-[15px] font-bold text-text-primary">Delete your account?</h4>
-            <p className="mt-2 text-[13px] text-text-secondary">
-              This signs you out on all devices and blocks future sign-in. This cannot be undone
-              from your side.
-            </p>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowDeleteConfirm(false)}
-                disabled={deleting}
-                className="fet-btn-secondary"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteAccount}
-                disabled={deleting}
-                className="fet-btn-danger"
-              >
-                {deleting ? 'Deleting…' : 'Delete account'}
-              </button>
-            </div>
+          <div
+            className="max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-xl bg-surface p-5 shadow-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {deleteDone ? (
+              <div className="py-4 text-center">
+                <h4 className="text-[16px] font-bold text-text-primary">Your account has been deleted</h4>
+                <p className="mt-2 text-[13px] text-text-secondary">
+                  Your email and matricule are now free, so you can create a new account whenever
+                  you are ready.
+                </p>
+                <p className="mt-3 text-[13px] text-text-secondary">
+                  Your academic records stay with the school and are visible to administrators
+                  only. Thank you for your feedback — it helps us improve.
+                </p>
+              </div>
+            ) : (
+              <>
+                <h4 className="text-[15px] font-bold text-text-primary">Delete your account?</h4>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-[12px] text-text-secondary">
+                  <li>You will be signed out on every device.</li>
+                  <li>Your email and matricule will be released for a new registration.</li>
+                  <li>Your academic records stay with the school and are visible to administrators only.</li>
+                  <li>Your feedback is stored with the archived account for administrators.</li>
+                </ul>
+
+                <label htmlFor="delete-reason" className="fet-label mt-4">Why are you leaving?</label>
+                <select
+                  id="delete-reason"
+                  value={deleteReason}
+                  onChange={(e) => setDeleteReason(e.target.value)}
+                  className="fet-select"
+                  disabled={deleting}
+                  required
+                >
+                  <option value="">Select a reason</option>
+                  {DELETE_REASONS.map((reason) => (
+                    <option key={reason.value} value={reason.value}>{reason.label}</option>
+                  ))}
+                </select>
+
+                <label htmlFor="delete-improvement" className="fet-label mt-4">
+                  What could we improve? {deleteReason === 'OTHER' ? '(required)' : '(optional)'}
+                </label>
+                <textarea
+                  id="delete-improvement"
+                  value={deleteImprovement}
+                  onChange={(e) => setDeleteImprovement(e.target.value)}
+                  className="fet-input"
+                  rows={3}
+                  maxLength={2000}
+                  placeholder="Tell us what went wrong or what would have kept you here."
+                  disabled={deleting}
+                />
+
+                <label htmlFor="delete-confirm" className="fet-label mt-4">
+                  Type DELETE to confirm
+                </label>
+                <input
+                  id="delete-confirm"
+                  type="text"
+                  value={deleteConfirm}
+                  onChange={(e) => setDeleteConfirm(e.target.value)}
+                  className="fet-input"
+                  placeholder="DELETE"
+                  autoComplete="off"
+                  disabled={deleting}
+                />
+
+                <label htmlFor="delete-password" className="fet-label mt-4">Current password</label>
+                <input
+                  id="delete-password"
+                  type="password"
+                  value={deletePassword}
+                  onChange={(e) => setDeletePassword(e.target.value)}
+                  className="fet-input"
+                  autoComplete="current-password"
+                  disabled={deleting}
+                />
+
+                {deleteError && (
+                  <p className="mt-3 text-[12px] font-medium text-danger">{deleteError}</p>
+                )}
+
+                <div className="mt-5 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteConfirm(false)}
+                    disabled={deleting}
+                    className="fet-btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteAccount}
+                    disabled={deleting || !canDelete}
+                    className="fet-btn-danger"
+                  >
+                    {deleting ? 'Deleting…' : 'Delete account'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

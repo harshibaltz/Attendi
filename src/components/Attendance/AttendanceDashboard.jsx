@@ -1,8 +1,9 @@
-﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
+﻿import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Calendar, Clock, QrCode, Plus,
   Eye, X, Monitor, Square, Loader2, RefreshCw, Pencil, Award, CreditCard, Trash2, AlertCircle,
-  UserCheck, Search, ChevronDown, CheckCircle2, ClipboardCheck,
+  UserCheck, Search, ChevronDown, CheckCircle2, ClipboardCheck, ArrowRight, Download,
 } from 'lucide-react';
 import attendanceApi from '../../lib/attendance';
 import AttendanceSession from './AttendanceSession';
@@ -122,6 +123,55 @@ const getRecordStatusColor = (status) => {
   }
 };
 
+const AttendanceMetricCard = ({
+  icon: Icon, value, label, help, valueClassName = 'text-2xl font-bold',
+}) => {
+  const [open, setOpen] = useState(false);
+  const panelId = `metric-help-${label.toLowerCase().replace(/\s+/g, '-')}`;
+
+  return (
+    <div className="fet-card flex flex-col p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <Icon size={24} className="shrink-0 text-primary" />
+          <div className="min-w-0">
+            <p className={`${valueClassName} text-text-primary`}>{value}</p>
+            <p className="text-xs text-text-secondary">{label}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen((valueOpen) => !valueOpen)}
+          aria-expanded={open}
+          aria-controls={panelId}
+          aria-label={`${open ? 'Hide' : 'Show'} details about ${label}`}
+          className="group -mr-1 -mt-1 inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-[11.5px] font-semibold text-primary transition-colors hover:bg-primary-light focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+        >
+          {open ? 'Less info' : 'More info'}
+          <ArrowRight
+            size={13}
+            className={`transition-transform duration-200 ${open ? 'rotate-90' : 'group-hover:translate-x-0.5'}`}
+          />
+        </button>
+      </div>
+
+      <div
+        id={panelId}
+        aria-hidden={!open}
+        className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+          open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+        }`}
+      >
+        <div className="overflow-hidden">
+          <p className="mt-4 border-t border-border-default pt-3 text-[12px] leading-relaxed text-text-secondary">
+            {help}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ---------------------------- STUDENT VIEW ---------------------------- */
 const StudentAttendance = ({ user }) => {
   const [station, setStation] = useState(null);
@@ -131,25 +181,44 @@ const StudentAttendance = ({ user }) => {
   const [showScanner, setShowScanner] = useState(false);
   const [error, setError] = useState('');
   const [now, setNow] = useState(Date.now());
+  // Polls overlap on slow networks; only the newest response may update the UI
+  // so an older payload can never overwrite a newer value.
+  const loadSeq = useRef(0);
 
   const load = useCallback(async () => {
-    try {
-      const [stationData, historyData, pointsData] = await Promise.all([
-        attendanceApi.myStation(),
-        attendanceApi.myAttendance(),
-        attendanceApi.myPoints(),
-      ]);
-      setStation(stationData || null);
-      setHistory(Array.isArray(historyData) ? historyData : []);
-      setPoints(pointsData);
-      setError('');
-    } catch (err) {
-      // Any failure must not leave a stale station banner on screen.
-      setStation(null);
-      setError(err.response?.data?.error?.message || 'Could not load attendance data.');
-    } finally {
-      setLoading(false);
+    const seq = ++loadSeq.current;
+    const results = await Promise.allSettled([
+      attendanceApi.myStation(),
+      attendanceApi.myAttendance(),
+      attendanceApi.myPoints(),
+    ]);
+    if (seq !== loadSeq.current) return;
+
+    const [stationResult, historyResult, pointsResult] = results;
+    let failed = 0;
+    if (stationResult.status === 'fulfilled') {
+      setStation(stationResult.value || null);
+    } else {
+      failed += 1;
     }
+    if (historyResult.status === 'fulfilled') {
+      setHistory(Array.isArray(historyResult.value) ? historyResult.value : []);
+    } else {
+      failed += 1;
+    }
+    if (pointsResult.status === 'fulfilled') {
+      setPoints(pointsResult.value);
+    } else {
+      failed += 1;
+    }
+
+    if (failed === results.length) {
+      const reason = results.find((r) => r.status === 'rejected')?.reason;
+      setError(reason?.response?.data?.error?.message || 'Could not load attendance data.');
+    } else {
+      setError('');
+    }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -178,8 +247,8 @@ const StudentAttendance = ({ user }) => {
     <div className="space-y-6">
       <div className="fet-welcome-banner">
         <h2 className="text-2xl font-bold">Attendance</h2>
-        <p className="text-[#8683BA] mt-1">Mark your attendance</p>
-        <p className="text-[#8683BA] text-xs mt-1">Scan the QR code displayed by your lecturer</p>
+        <p className="text-white/70 mt-1">Mark your attendance</p>
+        <p className="text-white/70 text-xs mt-1">Scan the QR code displayed by your lecturer</p>
       </div>
 
       {error && (
@@ -195,7 +264,7 @@ const StudentAttendance = ({ user }) => {
           <div>
             <h3 className="text-lg font-bold text-text-primary">Check-in now</h3>
             <p className="text-sm text-text-secondary">
-              {liveStation ? 'You are a station â€” classmates scan your QR.' : 'Scan the QR your lecturer is showing to record your presence.'}
+              {liveStation ? 'You are a station — classmates scan your QR.' : 'Scan the QR your lecturer is showing to record your presence.'}
             </p>
           </div>
           {!liveStation && (
@@ -207,36 +276,26 @@ const StudentAttendance = ({ user }) => {
       </div>
 
       {points && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="fet-card p-5">
-            <div className="flex items-center gap-3">
-              <Award size={24} className="text-primary" />
-              <div>
-                <p className="text-2xl font-bold text-text-primary">{points.total_points}</p>
-                <p className="text-xs text-text-secondary">Total points</p>
-              </div>
-            </div>
-          </div>
-          <div className="fet-card p-5">
-            <div className="flex items-center gap-3">
-              <CreditCard size={24} className="text-primary" />
-              <div>
-                <p className="text-sm font-semibold text-text-primary">
-                  {points.is_special_day ? `x${points.special_day_multiplier} (birthday!)` : 'x1'}
-                </p>
-                <p className="text-xs text-text-secondary">Multiplier today</p>
-              </div>
-            </div>
-          </div>
-          <div className="fet-card p-5">
-            <div className="flex items-center gap-3">
-              <Calendar size={24} className="text-primary" />
-              <div>
-                <p className="text-sm font-semibold text-text-primary">{history.length}</p>
-                <p className="text-xs text-text-secondary">Sessions attended</p>
-              </div>
-            </div>
-          </div>
+        <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-3">
+          <AttendanceMetricCard
+            icon={Award}
+            value={points.total_points}
+            label="Total points"
+            help="Earn points when your attendance is confirmed: 4 points for a check-in scan, 5 when you are picked as a class station, and 10 when you are named Student of the Class. Your total is the sum of all points earned across your courses."
+          />
+          <AttendanceMetricCard
+            icon={CreditCard}
+            value={points.is_special_day ? `x${points.special_day_multiplier} (birthday!)` : 'x1'}
+            valueClassName="text-base font-semibold"
+            label="Multiplier today"
+            help="Your multiplier applies to points earned today. It is x1 normally and rises on special days such as your birthday, when every attendance award is doubled. Past points are never recalculated."
+          />
+          <AttendanceMetricCard
+            icon={Calendar}
+            value={history.filter((r) => r.status === 'PRESENT' || r.status === 'LATE').length}
+            label="Sessions attended"
+            help="Counts the attendance sessions where you have a valid check-in marked PRESENT or LATE across all enrolled courses. It counts sessions, not scans, so extra QR scans do not inflate it."
+          />
         </div>
       )}
 
@@ -290,6 +349,7 @@ const StudentAttendance = ({ user }) => {
 
 /* ---------------------------- LECTURER VIEW ---------------------------- */
 const LecturerAttendance = () => {
+  const navigate = useNavigate();
   const [now, setNow] = useState(Date.now());
   const [sessions, setSessions] = useState([]);
   const [records, setRecords] = useState({});
@@ -311,7 +371,18 @@ const LecturerAttendance = () => {
   const [rosterError, setRosterError] = useState('');
   const [correctingRecord, setCorrectingRecord] = useState(null);
   const [correctionStatus, setCorrectionStatus] = useState('PRESENT');
+  const [recordsExportFormat, setRecordsExportFormat] = useState('csv');
   const [flash, setFlash] = useState('');
+  const [showAddStudent, setShowAddStudent] = useState(false);
+  const [addStudentId, setAddStudentId] = useState('');
+  const [addStudentStatus, setAddStudentStatus] = useState('PRESENT');
+  const [addingStudent, setAddingStudent] = useState(false);
+  const [addStudentError, setAddStudentError] = useState('');
+  const [recordSearch, setRecordSearch] = useState('');
+  const [recordSortBy, setRecordSortBy] = useState('name'); // name, matricule, department, status, time
+  // One live-status request per session at a time: slow responses must not
+  // stack up and land out of order (which made Present counts jump around).
+  const statusInFlight = useRef(new Set());
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -344,11 +415,15 @@ const LecturerAttendance = () => {
   }, []);
 
   const refreshStatus = useCallback(async (id) => {
+    if (statusInFlight.current.has(id)) return;
+    statusInFlight.current.add(id);
     try {
       const st = await attendanceApi.status(id);
       setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, ...st, status: st.status } : s)));
     } catch {
       // session may have expired server-side
+    } finally {
+      statusInFlight.current.delete(id);
     }
   }, []);
 
@@ -374,7 +449,7 @@ const LecturerAttendance = () => {
         if (first?.token) {
           setProjectorToken(first.token);
           setProjectorError('');
-          setProjectorExpiresIn(data.expires_in_seconds || 10);
+          setProjectorExpiresIn(data.expires_in_seconds || 8);
         } else {
           setProjectorError('The server returned no QR code. Try starting the session again.');
         }
@@ -390,7 +465,7 @@ const LecturerAttendance = () => {
       }
     };
     rotate();
-    const interval = setInterval(rotate, 8000);
+    const interval = setInterval(rotate, 7200);
     return () => { cancelled = true; clearInterval(interval); };
   }, [showProjector, selectedSession]);
 
@@ -561,6 +636,38 @@ const LecturerAttendance = () => {
     }
   };
 
+  const handleAddStudent = async (session) => {
+    if (!addStudentId.trim()) {
+      setAddStudentError('Select a student to add.');
+      return;
+    }
+    setAddingStudent(true);
+    setAddStudentError('');
+    try {
+      const created = await attendanceApi.manualAttendance(session.id, {
+        student_id: addStudentId,
+        status: addStudentStatus,
+      });
+      const sessId = session.id;
+      setRecords((prev) => {
+        const existing = prev[sessId] || [];
+        const exists = existing.some((r) => r.id === created.id);
+        return {
+          ...prev,
+          [sessId]: exists ? existing.map((r) => (r.id === created.id ? { ...r, ...created } : r)) : [created, ...existing],
+        };
+      });
+      setAddStudentId('');
+      setShowAddStudent(false);
+      setFlash('Student added to attendance.');
+      setTimeout(() => setFlash(''), 3000);
+    } catch (err) {
+      setAddStudentError(err.response?.data?.error?.message || 'Could not add student.');
+    } finally {
+      setAddingStudent(false);
+    }
+  };
+
   const displaySessions = useMemo(() => {
     // One row per class: the newest still-running session, else the newest
     // finished one. Prevents a pile of dead sessions for the same class.
@@ -623,8 +730,8 @@ const LecturerAttendance = () => {
       <div className="space-y-4">
         {displaySessions.map((session) => {
           const present = session.present ?? session.total_present ?? 0;
-          const eligible = session.total_eligible ?? 'â€”';
-          const pct = eligible === 'â€”' || eligible === 0 ? 0 : Math.round((present / eligible) * 100);
+          const eligible = session.total_eligible ?? '—';
+          const pct = eligible === '—' || eligible === 0 ? 0 : Math.round((present / eligible) * 100);
           const left = secondsLeft(new Date(session.expires_at).getTime(), now);
           return (
             <div key={session.id} className="ui-live">
@@ -787,7 +894,12 @@ const LecturerAttendance = () => {
               </thead>
               <tbody>
                 {historySessions.map((session) => (
-                  <tr key={session.id}>
+                  <tr
+                    key={session.id}
+                    onClick={() => navigate(`/attendance/sessions/${session.id}`)}
+                    className="cursor-pointer"
+                    title="View detailed register"
+                  >
                     <td className="font-medium">{session.course_code}</td>
                     <td>{session.class_name}</td>
                     <td>{fmtDate(session.started_at)}</td>
@@ -861,7 +973,7 @@ const LecturerAttendance = () => {
           <p className="text-white font-mono text-xl mt-6 font-bold tracking-widest break-all max-w-xl text-center">
             {projectorToken || (projectorError ? 'No QR code' : 'Generating QR...')}
           </p>
-          <p className="text-white/60 mt-2">Students scan to mark attendance â€” {activeSession.course_code} Â· {activeSession.class_name}</p>
+          <p className="text-white/60 mt-2">Students scan to mark attendance — {activeSession.course_code} · {activeSession.class_name}</p>
         </div>
       )}
 
@@ -880,8 +992,8 @@ const LecturerAttendance = () => {
                     <Square size={14} /> Close Session
                   </button>
                 )}
-                <button onClick={() => { setSelectedSession(null); setCorrectingRecord(null); }} className="p-1 hover:bg-page-bg rounded-lg">
-                  <span className="text-2xl">Ã—</span>
+                <button onClick={() => { setSelectedSession(null); setCorrectingRecord(null); }} className="p-1 hover:bg-page-bg rounded-lg" aria-label="Close session details">
+                  <X size={20} />
                 </button>
               </div>
             </div>
@@ -893,12 +1005,187 @@ const LecturerAttendance = () => {
               <div><span className="font-semibold">Status:</span> {selectedSession.status}</div>
             </div>
 
-            <h4 className="font-semibold text-text-primary mb-2">Attendance Records ({records[selectedSession.id]?.length || 0})</h4>
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <h4 className="font-semibold text-text-primary">Attendance Records ({records[selectedSession.id]?.length || 0})</h4>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddStudent((v) => !v);
+                    setAddStudentError('');
+                    setAddStudentId('');
+                  }}
+                  className="fet-btn-secondary h-8 text-xs"
+                >
+                  <Plus size={14} /> Add Student
+                </button>
+                {(records[selectedSession.id]?.length || 0) > 0 && (
+                  <>
+                    <div className="relative">
+                      <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-text-muted" />
+                      <input
+                        type="text"
+                        value={recordSearch}
+                        onChange={(e) => setRecordSearch(e.target.value)}
+                        placeholder="Search name/matricule/email"
+                        className="fet-input h-8 pl-7 w-48 text-xs"
+                      />
+                    </div>
+                    <select
+                      value={recordSortBy}
+                      onChange={(e) => setRecordSortBy(e.target.value)}
+                      className="fet-select h-8 text-xs"
+                    >
+                      <option value="name">Sort by Name</option>
+                      <option value="matricule">Sort by Matricule</option>
+                      <option value="department">Sort by Department</option>
+                      <option value="status">Sort by Status</option>
+                      <option value="time">Sort by Time</option>
+                    </select>
+                    <select
+                      value={recordsExportFormat}
+                      onChange={(e) => setRecordsExportFormat(e.target.value)}
+                      className="fet-select h-8 text-xs"
+                    >
+                      <option value="csv">CSV</option>
+                      <option value="pdf">PDF</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => {
+                      const recs = records[selectedSession.id] || [];
+                      if (recordsExportFormat === 'csv') {
+                        const head = ['Student Name', 'Email', 'Status', 'Method', 'Time'];
+                        const rows = recs.map((r) => [
+                          r.student_name || '',
+                          r.student_email || '',
+                          r.status || '',
+                          r.verification_method || '',
+                          r.recorded_at ? new Date(r.recorded_at).toLocaleString() : '',
+                        ]);
+                        const csv = [head, ...rows]
+                          .map((cols) => cols.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
+                          .join('\n');
+                        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `${selectedSession.course_code || 'session'}-${selectedSession.class_name || 'attendance'}.csv`.replace(/\s+/g, '-');
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      } else {
+                        const printWindow = window.open('', '_blank');
+                        if (!printWindow) return;
+                        const title = `${selectedSession.course_code || ''} - ${selectedSession.class_name || ''} Attendance`;
+                        const rows = recs.map((r) => `
+                          <tr>
+                            <td>${(r.student_name || '').replace(/</g, '&lt;')}</td>
+                            <td>${(r.student_email || '').replace(/</g, '&lt;')}</td>
+                            <td>${(r.status || '').replace(/</g, '&lt;')}</td>
+                            <td>${(r.verification_method || '').replace(/</g, '&lt;')}</td>
+                            <td>${r.recorded_at ? new Date(r.recorded_at).toLocaleString() : ''}</td>
+                          </tr>
+                        `).join('');
+                        printWindow.document.write(`
+                          <html>
+                            <head>
+                              <title>${title}</title>
+                              <style>
+                                body { font-family: Arial, sans-serif; padding: 20px; }
+                                h1 { font-size: 18px; margin-bottom: 10px; }
+                                h2 { font-size: 14px; margin: 5px 0 20px; color: #666; }
+                                table { width: 100%; border-collapse: collapse; font-size: 12px; }
+                                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                                th { background-color: #f5f5f5; }
+                              </style>
+                            </head>
+                            <body>
+                              <h1>${title.replace(/</g, '&lt;')}</h1>
+                              <table>
+                                <thead>
+                                  <tr>
+                                    <th>Student</th>
+                                    <th>Email</th>
+                                    <th>Status</th>
+                                    <th>Method</th>
+                                    <th>Time</th>
+                                  </tr>
+                                </thead>
+                                <tbody>${rows}</tbody>
+                              </table>
+                            </body>
+                          </html>
+                        `);
+                        printWindow.document.close();
+                        printWindow.focus();
+                        setTimeout(() => { printWindow.print(); printWindow.close(); }, 250);
+                      }
+                    }}
+                    className="fet-btn-secondary h-8 text-xs"
+                  >
+                    <Download size={14} /> Download
+                  </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {showAddStudent && (
+              <div className="mb-3 p-3 border border-border-default rounded-xl bg-page-bg">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="sm:col-span-2">
+                    <label className="fet-label">Student</label>
+                    <select
+                      value={addStudentId}
+                      onChange={(e) => {
+                        setAddStudentId(e.target.value);
+                        setAddStudentError('');
+                      }}
+                      className="fet-select"
+                    >
+                      <option value="">Select student from roster</option>
+                      {(roster.length ? roster : (records[selectedSession.id] || []).map((r) => ({ id: r.student_id, full_name: r.student_name, student_number: r.student_number, email: r.student_email })))
+                        .filter((s, idx, arr) => arr.findIndex((x) => x.id === s.id) === idx)
+                        .map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {(s.full_name || s.student_name)}{s.student_number ? ` - ${s.student_number}` : ''}{s.email ? ` (${s.email})` : ''}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="fet-label">Status</label>
+                    <select
+                      value={addStudentStatus}
+                      onChange={(e) => setAddStudentStatus(e.target.value)}
+                      className="fet-select"
+                    >
+                      <option value="PRESENT">Present</option>
+                      <option value="LATE">Late</option>
+                      <option value="ABSENT">Absent</option>
+                      <option value="EXCUSED">Excused</option>
+                    </select>
+                  </div>
+                </div>
+                {addStudentError && <p className="mt-2 text-xs text-red-500">{addStudentError}</p>}
+                <div className="mt-3 flex gap-2">
+                  <button onClick={() => handleAddStudent(selectedSession)} disabled={addingStudent} className="fet-btn-primary">
+                    {addingStudent ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Add
+                  </button>
+                  <button onClick={() => { setShowAddStudent(false); setAddStudentError(''); }} className="fet-btn-secondary">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="overflow-x-auto">
               <table className="fet-table">
                 <thead>
                   <tr>
                     <th>Student</th>
+                    <th>Matricule</th>
+                    <th>Department</th>
                     <th>Email</th>
                     <th>Status</th>
                     <th>Method</th>
@@ -907,13 +1194,55 @@ const LecturerAttendance = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {(records[selectedSession.id] || []).map((record) => (
+                  {(() => {
+                    let list = records[selectedSession.id] || [];
+                    const q = recordSearch.trim().toLowerCase();
+                    if (q) {
+                      list = list.filter((r) => {
+                        const name = (r.student_name || '').toLowerCase();
+                        const email = (r.student_email || '').toLowerCase();
+                        const mat = (r.student_number || r.matricule || '').toLowerCase();
+                        return name.includes(q) || email.includes(q) || mat.includes(q);
+                      });
+                    }
+                    list = [...list].sort((a, b) => {
+                      if (recordSortBy === 'name') {
+                        return (a.student_name || '').localeCompare(b.student_name || '');
+                      }
+                      if (recordSortBy === 'matricule') {
+                        return (a.student_number || a.matricule || '').localeCompare(b.student_number || b.matricule || '');
+                      }
+                      if (recordSortBy === 'department') {
+                        return (a.department || a.department_code || '').localeCompare(b.department || b.department_code || '');
+                      }
+                      if (recordSortBy === 'status') {
+                        return (a.status || '').localeCompare(b.status || '');
+                      }
+                      if (recordSortBy === 'time') {
+                        const ta = a.recorded_at ? new Date(a.recorded_at).getTime() : 0;
+                        const tb = b.recorded_at ? new Date(b.recorded_at).getTime() : 0;
+                        return tb - ta;
+                      }
+                      return 0;
+                    });
+                    if (list.length === 0) {
+                      return (
+                        <tr>
+                          <td colSpan={8} className="text-center py-8 text-text-secondary">
+                            No records found
+                          </td>
+                        </tr>
+                      );
+                    }
+                    return list.map((record) => (
                     <tr key={record.id}>
-                      <td className="font-medium">{record.student_name}</td>
-                      <td className="text-sm">{record.student_email}</td>
+                      <td className="font-medium">{record.student_name || '-'}</td>
+                      <td className="text-sm">{record.student_number || record.matricule || '-'}</td>
+                      <td className="text-sm">{record.department || record.department_code || '-'}</td>
+                      <td className="text-sm">{record.student_email || '-'}</td>
                       <td><span className={getRecordStatusColor(record.status)}>{record.status}</span></td>
-                      <td className="text-sm">{record.verification_method}</td>
-                      <td className="text-sm">{fmtTime(record.recorded_at)}</td>
+                      <td className="text-sm">{record.verification_method || '-'}</td>
+                      <td className="text-sm">{record.recorded_at ? `${fmtDate(record.recorded_at)} ${fmtTime(record.recorded_at)}` : '-'}</td>
                       <td>
                         <div className="flex items-center gap-3">
                           <button
@@ -932,14 +1261,8 @@ const LecturerAttendance = () => {
                         </div>
                       </td>
                     </tr>
-                  ))}
-                  {(records[selectedSession.id] || []).length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="text-center py-8 text-text-secondary">
-                        <Loader2 size={20} className="inline animate-spin mr-2" />No records loaded yet
-                      </td>
-                    </tr>
-                  )}
+                    ));
+                  })()}
                 </tbody>
               </table>
             </div>

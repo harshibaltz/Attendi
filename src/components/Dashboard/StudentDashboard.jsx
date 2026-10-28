@@ -11,6 +11,7 @@ import { notificationsApi } from '../../lib/notifications';
 import { learningApi } from '../../lib/learning';
 import { errorMessage } from '../../lib/enrollment';
 import { formatDate, formatClock, relativeTime } from '../../lib/format';
+import { getDisplayName } from '../../lib/profile';
 
 const EMPTY = {
   stats: { enrolled_courses: 0, attendance_rate: '0%', active_projects: 0, pending_tasks: 0 },
@@ -69,14 +70,14 @@ const StudentDashboard = ({ user }) => {
 
   useEffect(() => { load(); }, [load]);
 
-  const studentName = user?.fullName || 'Student';
+  const studentName = getDisplayName(user, 'Student');
   const rate = Number(String(data.stats.attendance_rate || '0').replace('%', '')) || 0;
 
   const statCards = [
-    { icon: FolderKanban, label: 'Active Projects', value: data.stats.active_projects, color: 'secondary' },
-    { icon: ListTodo, label: 'Pending Tasks', value: data.stats.pending_tasks, color: 'warning' },
-    { icon: BookOpen, label: 'Enrolled Courses', value: data.stats.enrolled_courses, color: 'info' },
-    { icon: CheckCircle, label: 'Attendance', value: `${rate}%`, color: 'success' },
+    { icon: FolderKanban, label: 'Active Projects', value: data.stats.active_projects, color: 'secondary', to: '/projects' },
+    { icon: ListTodo, label: 'Pending Tasks', value: data.stats.pending_tasks, color: 'warning', to: '/tasks' },
+    { icon: BookOpen, label: 'Enrolled Courses', value: data.stats.enrolled_courses, color: 'info', to: '/classrooms' },
+    { icon: CheckCircle, label: 'Attendance', value: `${rate}%`, color: 'success', to: '/attendance' },
   ];
 
   // Notifications are the platform's own record of what happened to you.
@@ -125,7 +126,7 @@ const StudentDashboard = ({ user }) => {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         {statCards.map((stat, index) => (
-          <StatsCard key={index} {...stat} />
+          <StatsCard key={index} {...stat} onClick={() => navigate(stat.to)} />
         ))}
       </div>
 

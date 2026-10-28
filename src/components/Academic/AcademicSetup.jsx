@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Building2, CalendarRange, Plus, Check, X, BookOpen, UserCheck } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Building2, CalendarRange, Plus, Check, X, BookOpen, UserCheck, ChevronDown } from 'lucide-react';
 import { SectionHeader, Card, CardBody, CardHead, DataTable, Pill, Callout, EmptyState, Tabs } from '../UI';
 import { academicsApi } from '../../lib/academics';
 import { errorMessage } from '../../lib/enrollment';
@@ -226,9 +226,159 @@ const DepartmentPanel = () => {
   );
 };
 
+const _initials = (name = '') =>
+  name.trim().split(/\s+/).map((word) => word[0] || '').join('').toLowerCase();
+
+const teacherMatches = (lecturer, query) => {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const name = (lecturer.full_name || '').toLowerCase();
+  const email = (lecturer.email || '').toLowerCase();
+  if (name.includes(q) || email.includes(q)) return true;
+  const compact = q.replace(/[^a-z0-9]/g, '');
+  if (compact && _initials(name).startsWith(compact)) return true;
+  const words = name.split(/\s+/);
+  return q.split(/\s+/).every((part) => words.some((word) => word.startsWith(part)));
+};
+
+/** Searchable lecturer picker: name, email, "JL" initials or "jo do". */
+const TeacherPicker = ({ value, lecturers, onChange, excludeId, label, placeholder }) => {
+  const [open, setOpen] = useState(false);
+  const [term, setTerm] = useState('');
+  const rootRef = useRef(null);
+  const selected = lecturers.find((item) => item.id === value) || null;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (event) => {
+      if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const matches = useMemo(
+    () => lecturers.filter((item) => item.id !== excludeId && teacherMatches(item, term)),
+    [lecturers, excludeId, term],
+  );
+
+  const choose = (id) => {
+    onChange(id);
+    setOpen(false);
+    setTerm('');
+  };
+
+  return (
+    <div ref={rootRef} className="min-w-[220px]">
+      <button
+        type="button"
+        aria-label={label}
+        onClick={() => setOpen((current) => !current)}
+        className="fet-input flex w-full items-center justify-between gap-2 text-left"
+      >
+        <span className={selected ? 'truncate' : 'truncate text-text-secondary'}>
+          {selected ? selected.full_name : placeholder}
+        </span>
+        <ChevronDown size={14} className="shrink-0 text-text-secondary" />
+      </button>
+      {open ? (
+        <div className="mt-1 rounded-md border border-border-default bg-surface p-2">
+          <input
+            autoFocus
+            value={term}
+            onChange={(event) => setTerm(event.target.value)}
+            placeholder="Search name, email or initials"
+            aria-label={`Search ${label}`}
+            className="fet-input mb-2 w-full"
+          />
+          <div className="max-h-44 overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => choose('')}
+              className="block w-full rounded px-2 py-1.5 text-left text-[12px] text-text-secondary hover:bg-surface-2"
+            >
+              Unassigned
+            </button>
+            {matches.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => choose(item.id)}
+                className={`block w-full rounded px-2 py-1.5 text-left hover:bg-surface-2 ${item.id === value ? 'font-semibold' : ''}`}
+              >
+                <span className="block text-[13px] text-text-primary">{item.full_name}</span>
+                <span className="block text-[11px] text-text-secondary">{item.email}</span>
+              </button>
+            ))}
+            {!matches.length ? (
+              <p className="px-2 py-2 text-[12px] text-text-secondary">No lecturer matches.</p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
+/** Owning department is inherent; the checked list adds departments whose
+ *  students may also self-register for the offering. */
+const DepartmentPicker = ({ value, departments, primaryId, onChange, label }) => {
+  const selected = new Set(value);
+  const shared = value.filter((id) => id !== String(primaryId));
+  const toggle = (id) => {
+    const next = new Set(value);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    onChange([...next]);
+  };
+  return (
+    <details className="min-w-[190px]">
+      <summary
+        aria-label={label}
+        className="fet-input flex cursor-pointer list-none items-center justify-between gap-2"
+      >
+        <span>{shared.length ? `${shared.length} shared` : 'Owning only'}</span>
+        <ChevronDown size={14} className="shrink-0 text-text-secondary" />
+      </summary>
+      <div className="mt-1 max-h-44 overflow-y-auto rounded-md border border-border-default bg-surface p-2">
+        <p className="mb-1 text-[11px] text-text-secondary">
+          Students in checked departments may also register.
+        </p>
+        {departments.map((department) => {
+          const id = String(department.id);
+          const isPrimary = id === String(primaryId);
+          return (
+            <label
+              key={id}
+              className="flex items-center gap-2 rounded px-1 py-1 text-[12px] hover:bg-surface-2"
+            >
+              <input
+                type="checkbox"
+                checked={isPrimary || selected.has(id)}
+                disabled={isPrimary}
+                onChange={() => toggle(id)}
+              />
+              <span className="truncate">{department.name}</span>
+              {isPrimary ? (
+                <span className="ml-auto text-[10px] uppercase text-text-secondary">Owning</span>
+              ) : null}
+            </label>
+          );
+        })}
+      </div>
+    </details>
+  );
+};
+
+const draftFor = (row) => ({
+  lecturer: row.lecturer || '',
+  co_lecturer: row.co_lecturer || '',
+  departments: (row.departments || []).map(String).filter((id) => id !== String(row.department)),
+});
+
 const CourseOfferingPanel = () => {
   const [rows, setRows] = useState([]);
   const [lecturers, setLecturers] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [activeSemester, setActiveSemester] = useState(null);
   const [drafts, setDrafts] = useState({});
   const [loading, setLoading] = useState(true);
@@ -240,10 +390,11 @@ const CourseOfferingPanel = () => {
     setLoading(true);
     setError('');
     try {
-      const [offerings, lecturerRows, semesterRows] = await Promise.all([
+      const [offerings, lecturerRows, semesterRows, departmentRows] = await Promise.all([
         academicsApi.courseOfferings(),
         academicsApi.lecturers(),
         academicsApi.semesters(),
+        academicsApi.departments(),
       ]);
       const active = (semesterRows || []).find((semester) => semester.is_active) || null;
       setActiveSemester(active);
@@ -257,7 +408,8 @@ const CourseOfferingPanel = () => {
       });
       setRows(offeringRows);
       setLecturers(lecturerRows || []);
-      setDrafts(Object.fromEntries(offeringRows.map((row) => [row.id, row.lecturer || ''])));
+      setDepartments(departmentRows || []);
+      setDrafts(Object.fromEntries(offeringRows.map((row) => [row.id, draftFor(row)])));
     } catch (err) {
       setError(errorMessage(err, 'Could not load course offerings and lecturers.'));
     } finally {
@@ -267,18 +419,40 @@ const CourseOfferingPanel = () => {
 
   useEffect(() => { load(); }, [load]);
 
+  const draftOf = (row) => drafts[row.id] || draftFor(row);
+
+  const updateDraft = (row, patch) =>
+    setDrafts((current) => ({ ...current, [row.id]: { ...draftOf(row), ...patch } }));
+
+  const isDirty = (row) => {
+    const draft = draftOf(row);
+    const original = draftFor(row);
+    const sameSet = (a, b) =>
+      [...a].sort().join('|') === [...b].sort().join('|');
+    return (
+      draft.lecturer !== original.lecturer ||
+      draft.co_lecturer !== original.co_lecturer ||
+      !sameSet(draft.departments, original.departments)
+    );
+  };
+
   const save = async (row) => {
-    const lecturerId = drafts[row.id] || null;
+    const draft = draftOf(row);
+    if (draft.lecturer && draft.lecturer === draft.co_lecturer) {
+      setNotice('');
+      setError('The lead lecturer cannot also be the co-lecturer.');
+      return;
+    }
     setBusyId(row.id);
     setError('');
     setNotice('');
     try {
-      await academicsApi.assignLecturer(row.id, lecturerId);
-      const lecturer = lecturers.find((item) => item.id === lecturerId);
-      setNotice(
-        `${row.course_code} assigned to ${lecturer?.full_name || 'no lecturer'}. ` +
-        (lecturer ? 'The classroom is now on their panel, ready for attendance.' : ''),
-      );
+      await academicsApi.updateOffering(row.id, {
+        lecturer: draft.lecturer || null,
+        co_lecturer: draft.co_lecturer || null,
+        departments: draft.departments,
+      });
+      setNotice(`${row.course_code} updated.`);
       await load();
     } catch (err) {
       setError(errorMessage(err, `Could not update ${row.course_code}.`));
@@ -299,7 +473,7 @@ const CourseOfferingPanel = () => {
         </div>
       ),
     },
-    { key: 'department_name', label: 'Department' },
+    { key: 'department_name', label: 'Owning department' },
     {
       key: 'semester_name',
       label: 'Semester',
@@ -314,38 +488,68 @@ const CourseOfferingPanel = () => {
     },
     {
       key: 'lecturer',
-      label: 'Teaching lecturer',
+      label: 'Lead lecturer',
       render: (row) => {
-        const draft = drafts[row.id] ?? row.lecturer ?? '';
-        const changed = draft !== (row.lecturer || '');
+        const draft = draftOf(row);
         return (
-          <div className="flex min-w-[260px] flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <select
-                aria-label={`Lecturer for ${row.course_code}`}
-                className="fet-input min-w-0 flex-1"
-                value={draft}
-                onChange={(event) => setDrafts((current) => ({ ...current, [row.id]: event.target.value }))}
-              >
-                <option value="">Unassigned</option>
-                {lecturers.map((lecturer) => (
-                  <option key={lecturer.id} value={lecturer.id}>
-                    {lecturer.full_name} · {lecturer.email}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className="fet-btn-secondary shrink-0"
-                onClick={() => save(row)}
-                disabled={!changed || busyId === row.id}
-              >
-                {busyId === row.id ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          </div>
+          <TeacherPicker
+            value={draft.lecturer}
+            lecturers={lecturers}
+            excludeId={draft.co_lecturer}
+            label={`Lead lecturer for ${row.course_code}`}
+            placeholder="Unassigned"
+            onChange={(id) => updateDraft(row, {
+              lecturer: id,
+              ...(id && id === draft.co_lecturer ? { co_lecturer: '' } : {}),
+            })}
+          />
         );
       },
+    },
+    {
+      key: 'co_lecturer',
+      label: 'Co-lecturer (optional)',
+      render: (row) => {
+        const draft = draftOf(row);
+        return (
+          <TeacherPicker
+            value={draft.co_lecturer}
+            lecturers={lecturers}
+            excludeId={draft.lecturer}
+            label={`Co-lecturer for ${row.course_code}`}
+            placeholder="None"
+            onChange={(id) => updateDraft(row, { co_lecturer: id })}
+          />
+        );
+      },
+    },
+    {
+      key: 'departments',
+      label: 'Shared with',
+      render: (row) => (
+        <DepartmentPicker
+          value={draftOf(row).departments}
+          departments={departments}
+          primaryId={row.department}
+          label={`Departments for ${row.course_code}`}
+          onChange={(ids) => updateDraft(row, { departments: ids })}
+        />
+      ),
+    },
+    {
+      key: 'actions',
+      label: '',
+      align: 'right',
+      render: (row) => (
+        <button
+          type="button"
+          className="fet-btn-secondary shrink-0"
+          onClick={() => save(row)}
+          disabled={!isDirty(row) || busyId === row.id}
+        >
+          {busyId === row.id ? 'Saving...' : 'Save'}
+        </button>
+      ),
     },
   ];
 
@@ -361,9 +565,10 @@ const CourseOfferingPanel = () => {
         </Callout>
       ) : null}
       <Callout tone="in" icon={UserCheck}>
-        Assign each course offering to its actual teaching lecturer. The lecturer
-        immediately gets that classroom on their panel and can take attendance for it.
-        Active-semester offerings are listed first.
+        Assign each course offering to its lead lecturer and, optionally, a co-lecturer
+        (search by name, email or initials). Both get the classroom on their panel and
+        can take attendance. Use <b>Shared with</b> so students from other departments
+        can also register. Active-semester offerings are listed first.
         {unassigned > 0 ? <span className="block mt-1">{unassigned} offering{unassigned === 1 ? '' : 's'} currently unassigned.</span> : null}
       </Callout>
       <Card accent="hub">

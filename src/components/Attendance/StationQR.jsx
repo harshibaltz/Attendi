@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { RefreshCw, Clock, Users, Loader2 } from 'lucide-react';
 import attendanceApi from '../../lib/attendance';
 import QRCodeDisplay from './QRCode';
 
-const REFRESH_MS = 9000;
+// Fetch a fresh token slightly before the 8s server-side expiry.
+const REFRESH_MS = 7200;
 
 const StationQR = ({ sessionId, station }) => {
   const [timeLeft, setTimeLeft] = useState(station?.expires_in_seconds || 0);
@@ -11,16 +12,19 @@ const StationQR = ({ sessionId, station }) => {
   const [loading, setLoading] = useState(!station?.token);
   const [error, setError] = useState('');
   const [scanStats, setScanStats] = useState(null);
+  // Never let an older token response overwrite a newer one.
+  const tokenInFlight = useRef(false);
 
   // Memoised on sessionId so the refresh effect below can depend on it without
   // tearing down and rebuilding the interval on every render.
   const fetchToken = useCallback(async () => {
-    if (!sessionId) return;
+    if (!sessionId || tokenInFlight.current) return;
+    tokenInFlight.current = true;
     setError('');
     try {
       const data = await attendanceApi.myStationToken(sessionId);
       setToken(data.token);
-      setTimeLeft(data.expires_in_seconds || 10);
+      setTimeLeft(data.expires_in_seconds || 8);
       setScanStats({
         scans_at_station: data.scans_at_station,
         scans_remaining: data.scans_remaining,
@@ -38,6 +42,7 @@ const StationQR = ({ sessionId, station }) => {
       }
       setError(err.response?.data?.error?.message || 'Could not load your station token.');
     } finally {
+      tokenInFlight.current = false;
       setLoading(false);
     }
   }, [sessionId]);

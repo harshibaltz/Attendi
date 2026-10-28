@@ -17,4 +17,16 @@ export const normalizeRole = (role) => {
   return r || 'student';
 };
 
+export const getDisplayName = (user, fallback = '') => {
+  if (!user) return fallback;
+  const full = user.fullName || user.full_name;
+  if (full) return full;
+  const joined = [user.first_name, user.last_name].filter(Boolean).join(' ').trim();
+  return joined || user.email?.split('@')[0] || fallback;
+};
+
+export const normalizeUser = (user) => (
+  user ? { ...user, fullName: getDisplayName(user, user.fullName || '') } : user
+);
+
 export default profileApi;
