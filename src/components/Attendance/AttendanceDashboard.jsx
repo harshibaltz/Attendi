@@ -905,6 +905,7 @@ const LecturerAttendance = () => {
                   <th>Started</th>
                   <th>Present</th>
                   <th>Status</th>
+                  <th className="text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -920,6 +921,19 @@ const LecturerAttendance = () => {
                     <td>{fmtDate(session.started_at)}</td>
                     <td>{session.present ?? session.total_present ?? 0}</td>
                     <td><span className={getStatusColor(session.status)}>{session.status}</span></td>
+                    <td className="text-right">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/attendance/sessions/${session.id}`);
+                        }}
+                        className="fet-btn-secondary h-8 whitespace-nowrap text-xs"
+                        title="View detailed register"
+                      >
+                        <Eye size={14} /> View list
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
