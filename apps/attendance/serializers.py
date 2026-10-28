@@ -59,7 +59,7 @@ class AttendanceRecordSerializer(serializers.ModelSerializer):
         fields = [
             "id", "attendance_session", "student", "student_email", "student_name",
             "student_number", "department", "level",
-            "recorded_at", "verification_method", "status",
+            "recorded_at", "updated_at", "verification_method", "status",
         ]
 
     def get_student_name(self, obj):

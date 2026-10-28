@@ -1,6 +1,7 @@
 from django.shortcuts import get_object_or_404
 from django.db import transaction
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -37,11 +38,11 @@ class SupportTicketAdminView(APIView):
         new_status = request.data.get("status")
         message = request.data.get("message")
         if new_status is None and message is None:
-            return Response({"error": "Send a status or reply message."}, status=status.HTTP_400_BAD_REQUEST)
+            raise ValidationError({"detail": "Send a status or reply message."})
         if new_status is not None and new_status not in SupportTicket.Status.values:
-            return Response({"error": "Invalid status."}, status=status.HTTP_400_BAD_REQUEST)
+            raise ValidationError({"status": "Invalid status."})
         if message is not None and (not isinstance(message, str) or not 1 <= len(message.strip()) <= 10000):
-            return Response({"error": "Reply must be 1-10000 characters."}, status=status.HTTP_400_BAD_REQUEST)
+            raise ValidationError({"message": "Reply must be 1-10000 characters."})
         with transaction.atomic():
             if new_status is not None:
                 ticket.status = new_status

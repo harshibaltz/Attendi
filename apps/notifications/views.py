@@ -38,4 +38,4 @@ class NotificationReadAllView(APIView):
 
     def post(self, request):
         Notification.objects.filter(user=request.user, read_at__isnull=True).update(read_at=timezone.now())
-        return Response({"success": True, "data": {"message": "All notifications marked as read."}})
+        return Response({"message": "All notifications marked as read."})

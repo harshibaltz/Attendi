@@ -1,5 +1,6 @@
 from django.shortcuts import get_object_or_404
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -41,10 +42,12 @@ class SupportContactView(APIView):
         subject = request.data.get("subject", "general")
         message = request.data.get("message", "")
         if not isinstance(subject, str) or not isinstance(message, str):
-            return Response({"error": "Subject and message must be text."}, status=status.HTTP_400_BAD_REQUEST)
+            raise ValidationError({"subject": "Subject and message must be text."})
         subject, message = subject.strip(), message.strip()
-        if not subject or len(subject) > 200 or not 10 <= len(message) <= 10000:
-            return Response({"error": "Subject must be 1-200 characters and message 10-10000 characters."}, status=status.HTTP_400_BAD_REQUEST)
+        if not subject or len(subject) > 200:
+            raise ValidationError({"subject": "Subject must be 1-200 characters."})
+        if not 10 <= len(message) <= 10000:
+            raise ValidationError({"message": "Message must be 10-10000 characters."})
         ticket = SupportTicket.objects.create(user=request.user, subject=subject, message=message)
         audit(user=request.user, action="SUPPORT_CONTACT", resource_type="SupportTicket", resource_id=ticket.id, request=request)
         return Response(ticket_data(ticket), status=status.HTTP_201_CREATED)
