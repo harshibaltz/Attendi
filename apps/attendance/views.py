@@ -369,6 +369,100 @@ class ManualAttendanceView(APIView):
         return Response(AttendanceRecordSerializer(record).data, status=status.HTTP_201_CREATED if created else 200)
 
 
+class ManualAttendanceBatchView(APIView):
+    """POST /api/v1/attendance/{session_id}/manual/batch
+    {student_ids: [uuid, ...], status?}
+
+    Add up to 15 students in one request. Students who are not enrolled or
+    already have a record for this session are skipped (reported back) instead
+    of failing the whole batch. Manual entries still earn ZERO points (FR-048).
+    """
+
+    permission_classes = [IsAuthenticated, IsLecturerOrAdmin]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "attendance_admin"
+    MAX_BATCH = 15
+
+    def post(self, request, attendance_session_id):
+        session = get_object_or_404(AttendanceSession, id=attendance_session_id)
+        if not _can_manage_attendance(request.user, session.course_offering, session.lecturer_id):
+            return Response(
+                {"success": False, "error": {"code": "FORBIDDEN", "message": "Only the session lecturer can add manual attendance."}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        new_status = request.data.get("status", "PRESENT")
+        if new_status not in {"PRESENT", "LATE", "ABSENT", "EXCUSED"}:
+            return Response(
+                {"success": False, "error": {"code": "VALIDATION_ERROR", "message": "Invalid status."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        raw_ids = request.data.get("student_ids")
+        if not isinstance(raw_ids, list) or not raw_ids:
+            return Response(
+                {"success": False, "error": {"code": "VALIDATION_ERROR", "message": "Select at least one student."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        student_ids = []
+        for value in raw_ids:
+            try:
+                parsed = value if isinstance(value, UUID) else UUID(str(value))
+            except (TypeError, ValueError, AttributeError):
+                return Response(
+                    {"success": False, "error": {"code": "VALIDATION_ERROR", "message": "One of the selected students has an invalid id."}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if parsed not in student_ids:
+                student_ids.append(parsed)
+        if len(student_ids) > self.MAX_BATCH:
+            return Response(
+                {"success": False, "error": {"code": "VALIDATION_ERROR", "message": f"You can add at most {self.MAX_BATCH} students at once."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        created_records = []
+        skipped = []
+        with transaction.atomic():
+            eligible = set(
+                Enrollment.objects.filter(
+                    student_id__in=student_ids,
+                    course_offering=session.course_offering,
+                    status=Enrollment.Status.ACTIVE,
+                ).values_list("student_id", flat=True)
+            )
+            existing = set(
+                AttendanceRecord.objects.filter(
+                    attendance_session=session, student_id__in=student_ids
+                ).values_list("student_id", flat=True)
+            )
+            for student_id in student_ids:
+                if student_id not in eligible:
+                    skipped.append({"student_id": str(student_id), "reason": "NOT_ENROLLED"})
+                    continue
+                if student_id in existing:
+                    skipped.append({"student_id": str(student_id), "reason": "ALREADY_RECORDED"})
+                    continue
+                record, created = AttendanceRecord.objects.get_or_create(
+                    attendance_session=session,
+                    student_id=student_id,
+                    defaults={
+                        "verification_method": AttendanceRecord.VerificationMethod.MANUAL,
+                        "status": new_status,
+                    },
+                )
+                if not created:
+                    skipped.append({"student_id": str(student_id), "reason": "ALREADY_RECORDED"})
+                    continue
+                award_manual_points(session, student=student_id)
+                created_records.append(record)
+
+        payload = {
+            "created": AttendanceRecordSerializer(created_records, many=True).data,
+            "skipped": skipped,
+            "count": len(created_records),
+        }
+        return Response(payload, status=status.HTTP_201_CREATED if created_records else status.HTTP_200_OK)
+
+
 class StudentOfClassView(APIView):
     """POST /api/v1/attendance/{session_id}/student-of-class/
 

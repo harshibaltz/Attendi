@@ -11,6 +11,7 @@ urlpatterns = [
     path("attendance/<uuid:attendance_session_id>/checkpoints/auto-select/", views.AutoSelectStationsView.as_view(), name="auto-select-stations"),
     path("attendance/<uuid:attendance_session_id>/checkpoints/<uuid:checkpoint_id>/", views.CheckpointDetailView.as_view(), name="checkpoint-delete"),
     path("attendance/<uuid:attendance_session_id>/manual/", views.ManualAttendanceView.as_view(), name="manual-attendance"),
+    path("attendance/<uuid:attendance_session_id>/manual/batch/", views.ManualAttendanceBatchView.as_view(), name="manual-attendance-batch"),
     path("attendance/<uuid:attendance_session_id>/tokens/", views.TokensView.as_view(), name="tokens"),
     path("attendance/<uuid:attendance_session_id>/my-station-token/", views.StationTokenView.as_view(), name="my-station-token"),
     path("attendance/<uuid:attendance_session_id>/station-credential/", views.StationCredentialView.as_view(), name="station-credential"),
