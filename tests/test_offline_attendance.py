@@ -13,7 +13,7 @@ from django.utils import timezone
 from apps.academics.models import Enrollment
 from apps.attendance.models import AttendanceCheckpoint, AttendanceRecord, AttendanceSession, PointsLedger
 from apps.attendance.token_store import (
-    TOKEN_HEADER, TokenVerificationError, credential_bundle, decode_token_version, generate_hmac_token,
+    TOKEN_HEADER, TOKEN_TTL, TokenVerificationError, credential_bundle, decode_token_version, generate_hmac_token,
     generate_session_token, verify_hmac_token,
 )
 
@@ -228,7 +228,8 @@ def test_qr_endpoint_preserves_v1_default_and_allows_v2_opt_in(api_client, class
 def test_qr_endpoint_does_not_issue_unusable_final_slot(api_client, class_session, lecturer_user):
     session = make_session(
         class_session, lecturer_user,
-        started=timezone.now() - timedelta(seconds=21), seconds=30,
+        started=timezone.now() - timedelta(seconds=TOKEN_TTL * 4 + 1),
+        seconds=TOKEN_TTL * 4 + 3,
     )
     api_client.force_authenticate(user=lecturer_user)
     response = api_client.post(
