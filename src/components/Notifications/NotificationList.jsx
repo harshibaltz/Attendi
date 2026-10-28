@@ -27,7 +27,7 @@ const NotificationList = () => {
     try {
       setRows((await notificationsApi.list(filter === 'unread')) || []);
     } catch (err) {
-      setError(errorMessage(err, 'Could not load notifications.'));
+      setError(errorMessage(err, 'Could not load notifications. Please try again.'));
     } finally {
       setLoading(false);
     }
