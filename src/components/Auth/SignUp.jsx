@@ -19,32 +19,41 @@ const normalizeFullName = (value) => {
   };
 };
 
+const GENERIC_ERRORS = new Set([
+  'the request could not be completed.',
+  'unable to create account. please try again.',
+]);
+
+const collectMessages = (value, out = []) => {
+  if (!value) return out;
+  if (typeof value === 'string') {
+    const text = value.trim();
+    // Skip machine codes like "VALIDATION_ERROR" - they mean nothing to a user.
+    if (text && !/^[A-Z0-9_]+$/.test(text)) out.push(text);
+    return out;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item) => collectMessages(item, out));
+    return out;
+  }
+  if (typeof value === 'object') {
+    // Prefer per-field detail messages over the envelope's generic message.
+    if (value.details) collectMessages(value.details, out);
+    if (value.error) collectMessages(value.error, out);
+    if (value.message) collectMessages(value.message, out);
+    Object.entries(value).forEach(([key, item]) => {
+      if (['details', 'error', 'message', 'success', 'code'].includes(key)) return;
+      collectMessages(item, out);
+    });
+  }
+  return out;
+};
+
 const formatServerError = (errorData) => {
   if (!errorData) return 'Unable to create account. Please try again.';
-
-  if (typeof errorData === 'string') return errorData;
-
-  if (Array.isArray(errorData)) {
-    return errorData.map((item) => formatServerError(item)).join(' ');
-  }
-
-  if (typeof errorData === 'object') {
-    const messages = [];
-    Object.values(errorData).forEach((value) => {
-      if (Array.isArray(value)) {
-        value.forEach((item) => messages.push(formatServerError(item)));
-      } else if (typeof value === 'string') {
-        messages.push(value);
-      } else if (value && typeof value === 'object') {
-        messages.push(formatServerError(value));
-      }
-    });
-
-    const clean = messages.filter(Boolean).map((item) => item.trim()).filter(Boolean);
-    return clean[0] || 'Unable to create account. Please try again.';
-  }
-
-  return 'Unable to create account. Please try again.';
+  const messages = collectMessages(errorData)
+    .filter((message) => !GENERIC_ERRORS.has(message.toLowerCase().replace(/\s+/g, ' ')));
+  return messages[0] || 'Some details are not valid. Please check the form and try again.';
 };
 
 const SignUp = ({ onSignUp, onSwitchToLogin }) => {
@@ -66,33 +75,46 @@ const SignUp = ({ onSignUp, onSwitchToLogin }) => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [departmentsError, setDepartmentsError] = useState('');
+  const [loadingDepartments, setLoadingDepartments] = useState(true);
+
+  // Only real departments (UUID ids) may be offered. A fabricated list is
+  // worse than none: the backend rejects unknown ids with a validation error,
+  // and students cannot tell what went wrong.
+  const loadDepartments = async () => {
+    setLoadingDepartments(true);
+    setDepartmentsError('');
+    try {
+      const depts = await academicsApi.publicDepartments();
+      const valid = Array.isArray(depts)
+        ? depts.filter((dept) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(dept?.id || '')))
+        : [];
+      if (valid.length > 0) {
+        setDepartments(valid);
+        localStorage.setItem('fet_departments', JSON.stringify(valid));
+        setLoadingDepartments(false);
+        return;
+      }
+      setDepartmentsError('Departments could not be loaded. Please check your connection and try again.');
+    } catch {
+      setDepartmentsError('Departments could not be loaded. Please check your connection and try again.');
+    }
+
+    // A previously cached real list can bridge a brief outage.
+    let cached = [];
+    try {
+      cached = JSON.parse(localStorage.getItem('fet_departments') || '[]');
+    } catch {
+      cached = [];
+    }
+    const validCached = Array.isArray(cached)
+      ? cached.filter((dept) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(dept?.id || '')))
+      : [];
+    setDepartments(validCached);
+    setLoadingDepartments(false);
+  };
 
   useEffect(() => {
-    const loadDepartments = async () => {
-      try {
-        const depts = await academicsApi.publicDepartments();
-        if (Array.isArray(depts) && depts.length > 0) {
-          setDepartments(depts);
-          return;
-        }
-      } catch {
-        // Fall back to local cache if the API is unavailable.
-      }
-
-      let depts = JSON.parse(localStorage.getItem('fet_departments') || '[]');
-      if (!Array.isArray(depts) || depts.length === 0) {
-        depts = [
-          { id: '1', name: 'Computer Engineering', code: 'CE' },
-          { id: '2', name: 'Civil Engineering', code: 'CVE' },
-          { id: '3', name: 'Chemical & Petroleum Engineering', code: 'CHE' },
-          { id: '4', name: 'Electrical & Electronic Engineering', code: 'EE' },
-          { id: '5', name: 'Mechanical & Industrial Engineering', code: 'ME' },
-        ];
-        localStorage.setItem('fet_departments', JSON.stringify(depts));
-      }
-      setDepartments(depts);
-    };
-
     loadDepartments();
   }, []);
 
@@ -167,7 +189,9 @@ const SignUp = ({ onSignUp, onSwitchToLogin }) => {
     });
 
     if (!selectedDept) {
-      setError('Please select a valid department.');
+      setError(departments.length === 0
+        ? 'Departments could not be loaded. Please retry and select your department.'
+        : 'Please select a valid department.');
       setIsLoading(false);
       return;
     }
@@ -223,7 +247,9 @@ const SignUp = ({ onSignUp, onSwitchToLogin }) => {
       onSignUp(created);
     } catch (err) {
       setIsLoading(false);
-      const message = formatServerError(err.response?.data || err.message);
+      const message = err.response
+        ? formatServerError(err.response.data)
+        : 'Network problem. Check your connection and try again.';
       setError(message);
     }
   };
@@ -291,18 +317,20 @@ const SignUp = ({ onSignUp, onSwitchToLogin }) => {
               <div className="relative">
                 <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 text-text-secondary pointer-events-none" size={16} />
                 <select name="department" value={formData.department} onChange={handleChange}
-                  className={`${inputBase} pl-10 pr-9 appearance-none`} required>
-                  <option value="">-- Select Department --</option>
-                  {departments.length > 0 ? (
-                    departments.map(dept => (
-                      <option key={dept.id} value={dept.id}>{dept.name} ({dept.code || 'Dept'})</option>
-                    ))
-                  ) : (
-                    <option value="" disabled>Loading departments...</option>
-                  )}
+                  className={`${inputBase} pl-10 pr-9 appearance-none`} required disabled={loadingDepartments || departments.length === 0}>
+                  <option value="">{loadingDepartments ? 'Loading departments...' : '-- Select Department --'}</option>
+                  {departments.map(dept => (
+                    <option key={dept.id} value={dept.id}>{dept.name} ({dept.code || 'Dept'})</option>
+                  ))}
                 </select>
                 <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-text-secondary pointer-events-none" size={16} />
               </div>
+              {departmentsError && (
+                <p className="mt-1 text-[12px] text-red-600">
+                  {departmentsError}{' '}
+                  <button type="button" onClick={loadDepartments} className="underline font-medium">Retry</button>
+                </p>
+              )}
             </div>
 
             {formData.role === 'student' && (
