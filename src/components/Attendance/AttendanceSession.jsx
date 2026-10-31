@@ -7,7 +7,7 @@ const DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'
 // Keep in step with ATTENDANCE_SESSION_MAX_SECONDS on the backend (10800s).
 const MAX_WINDOW_MINUTES = 180;
 
-const AttendanceSession = ({ onClose, onCreated }) => {
+const AttendanceSession = ({ onClose, onCreated, initialOfferingId }) => {
   const [step, setStep] = useState(1);
   const [courses, setCourses] = useState([]);
   const [loadingCourses, setLoadingCourses] = useState(true);
@@ -24,45 +24,31 @@ const AttendanceSession = ({ onClose, onCreated }) => {
   useEffect(() => {
     (async () => {
       try {
-        const data = await attendanceApi.lecturerCourses();
-        setCourses(Array.isArray(data) ? data : []);
+        // Works for lecturers and for student delegates alike.
+        const data = await attendanceApi.launchableCourses();
+        const list = Array.isArray(data) ? data : [];
+        setCourses(list);
+        if (initialOfferingId && list.some((c) => String(c.offering_id) === String(initialOfferingId))) {
+          setFormData((prev) => ({ ...prev, offeringId: String(initialOfferingId) }));
+        }
       } catch (err) {
         setError(err.response?.data?.error?.message || 'Could not load your courses.');
       } finally {
         setLoadingCourses(false);
       }
     })();
-  }, []);
+  }, [initialOfferingId]);
 
-  const offering = courses.find((c) => c.offering_id === formData.offeringId);
+  const offering = courses.find((c) => String(c.offering_id) === String(formData.offeringId));
   const schedule = offering?.schedules?.find((s) => String(s.id) === String(formData.scheduleId));
 
   const fmtTime = (t) => (t ? String(t).slice(0, 5) : '');
 
-  const handleSubmit = async () => {
-    if (!formData.offeringId) {
-      setError('Please select a course.');
-      return;
-    }
+  const startSession = async (payload) => {
     setStarting(true);
     setError('');
     try {
-      const minutes = Number(formData.windowMinutes);
-      const windowMinutes = Number.isFinite(minutes) && minutes >= 1
-        ? Math.min(minutes, MAX_WINDOW_MINUTES)
-        : 5;
-      const payload = {
-        offering_id: formData.offeringId,
-        mode: formData.mode,
-        // How long attendance stays OPEN (minutes chosen by the lecturer).
-        // The QR token TTL is a separate, server-side security setting.
-        duration_seconds: Math.round(windowMinutes * 60),
-      };
-      if (formData.scheduleId) payload.schedule_id = formData.scheduleId;
-      if (formData.expectedHeadcount) payload.expected_headcount = Number(formData.expectedHeadcount);
-
       const session = await attendanceApi.startFlex(payload);
-
       if (onCreated) onCreated(session);
       if (onClose) onClose();
     } catch (err) {
@@ -70,6 +56,41 @@ const AttendanceSession = ({ onClose, onCreated }) => {
     } finally {
       setStarting(false);
     }
+  };
+
+  const handleSubmit = async () => {
+    if (!formData.offeringId) {
+      setError('Please select a course.');
+      return;
+    }
+    const minutes = Number(formData.windowMinutes);
+    const windowMinutes = Number.isFinite(minutes) && minutes >= 1
+      ? Math.min(minutes, MAX_WINDOW_MINUTES)
+      : 5;
+    const payload = {
+      offering_id: formData.offeringId,
+      mode: formData.mode,
+      // How long attendance stays OPEN (minutes chosen by the lecturer).
+      // The QR token TTL is a separate, server-side security setting.
+      duration_seconds: Math.round(windowMinutes * 60),
+    };
+    if (formData.scheduleId) payload.schedule_id = formData.scheduleId;
+    if (formData.expectedHeadcount) payload.expected_headcount = Number(formData.expectedHeadcount);
+    await startSession(payload);
+  };
+
+  // One-click path: sensible defaults so a delegate can start between classes
+  // without walking through the options screen.
+  const handleLaunchNow = () => {
+    if (!formData.offeringId) {
+      setError('Please select a course.');
+      return;
+    }
+    startSession({
+      offering_id: formData.offeringId,
+      mode: formData.mode || 'PROJECTOR',
+      duration_seconds: 5 * 60,
+    });
   };
 
   return (
@@ -186,19 +207,32 @@ const AttendanceSession = ({ onClose, onCreated }) => {
                 </div>
               </div>
 
-              <button
-                onClick={() => {
-                  if (!formData.offeringId) {
-                    setError('Please select a course.');
-                    return;
-                  }
-                  setError('');
-                  setStep(2);
-                }}
-                className="w-full fet-btn-primary"
-              >
-                Continue →
-              </button>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={() => {
+                    if (!formData.offeringId) {
+                      setError('Please select a course.');
+                      return;
+                    }
+                    setError('');
+                    setStep(2);
+                  }}
+                  className="flex-1 fet-btn-primary"
+                >
+                  Continue →
+                </button>
+                <button
+                  onClick={handleLaunchNow}
+                  disabled={starting || !formData.offeringId}
+                  className="flex-1 fet-btn-success flex items-center justify-center gap-2"
+                >
+                  {starting && <Loader2 size={18} className="animate-spin" />}
+                  Launch now (5 min)
+                </button>
+              </div>
+              <p className="text-center text-[11px] text-text-secondary">
+                “Launch now” skips the options and opens a 5-minute projected-QR session.
+              </p>
             </div>
           )}
 
@@ -240,7 +274,7 @@ const AttendanceSession = ({ onClose, onCreated }) => {
                     How long attendance stays open for students to scan (up to {MAX_WINDOW_MINUTES} minutes).
                   </p>
                   <p className="text-[11px] text-text-secondary mt-1">
-                    The QR code itself refreshes every 10s for security &mdash; separate, and automatic.
+                    The QR code itself refreshes every few seconds for security &mdash; separate, and automatic.
                   </p>
                 </div>
                 <div>

@@ -9,6 +9,7 @@ import {
 import { learningApi } from '../../lib/learning';
 import { announcementsApi } from '../../lib/announcements';
 import { normalizeRole } from '../../lib/profile';
+import CourseDelegatesPanel from '../../components/Attendance/CourseDelegatesPanel';
 import AssessmentPanel from '../../components/Assessment/AssessmentPanel';
 
 const PALETTES = [
@@ -543,6 +544,9 @@ const CourseDetail = ({ user }) => {
 
       {tab === 'stream' && (
         <div className="space-y-4">
+          {isStaff && course?.course ? (
+            <CourseDelegatesPanel courseId={course.course} />
+          ) : null}
           <div className="fet-card p-5 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="font-semibold text-text-primary">{isStaff ? 'Work to review' : 'Your work'}</h3>

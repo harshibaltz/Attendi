@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, BookOpen, Users, FileText, ArrowRight, Plus, X, CheckCircle2, AlertTriangle, Search } from 'lucide-react';
+import { Loader2, BookOpen, Users, FileText, ArrowRight, Plus, X, CheckCircle2, AlertTriangle, Search, ClipboardCheck } from 'lucide-react';
 import { learningApi } from '../../lib/learning';
 import { enrollmentApi, errorMessage } from '../../lib/enrollment';
 import { normalizeRole } from '../../lib/profile';
@@ -260,8 +260,26 @@ const MyCourses = ({ user }) => {
                     {isStaff && course.ungraded_submissions > 0 ? (
                       <Pill tone="wn">{course.ungraded_submissions} to mark</Pill>
                     ) : null}
+                    {course.is_class_delegate ? (
+                      <Pill tone="ok">Class delegate</Pill>
+                    ) : null}
+                    {course.is_department_delegate ? (
+                      <Pill tone="ok">Course delegate</Pill>
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
+                    {!isStaff && course.can_launch_attendance ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/attendance?launch=${course.offering_id}`);
+                        }}
+                        className="fet-btn-secondary flex items-center gap-1.5"
+                      >
+                        <ClipboardCheck size={15} /> Launch attendance
+                      </button>
+                    ) : null}
                     {!isStaff ? (
                       <button
                         type="button"

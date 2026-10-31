@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Calendar, Clock, QrCode, Plus,
   Eye, X, Monitor, Square, Loader2, RefreshCw, Pencil, Award, CreditCard, Trash2, AlertCircle,
@@ -349,8 +349,10 @@ const StudentAttendance = ({ user }) => {
 };
 
 /* ---------------------------- LECTURER VIEW ---------------------------- */
-const LecturerAttendance = () => {
+const LecturerAttendance = ({ user }) => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [launchOfferingId, setLaunchOfferingId] = useState('');
   const [now, setNow] = useState(Date.now());
   const [sessions, setSessions] = useState([]);
   const [records, setRecords] = useState({});
@@ -389,6 +391,15 @@ const LecturerAttendance = () => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Delegates land here from a course card's "Launch attendance" button.
+  useEffect(() => {
+    const offeringId = searchParams.get('launch');
+    if (!offeringId) return;
+    setLaunchOfferingId(offeringId);
+    setShowCreateSession(true);
+    setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   // Restore the lecturer's sessions after a reload so Project / View stay available.
   useEffect(() => {
@@ -966,7 +977,12 @@ const LecturerAttendance = () => {
 
       {/* Create session modal */}
       {showCreateSession && (
-        <AttendanceSession user={{ role: 'lecturer' }} onClose={() => setShowCreateSession(false)} onCreated={handleSessionCreated} />
+        <AttendanceSession
+          user={user}
+          initialOfferingId={launchOfferingId}
+          onClose={() => { setShowCreateSession(false); setLaunchOfferingId(''); }}
+          onCreated={handleSessionCreated}
+        />
       )}
 
       {/* Projector overlay with REAL QR */}
@@ -1315,7 +1331,10 @@ const LecturerAttendance = () => {
 
 /* ------------------------------- ENTRY -------------------------------- */
 const AttendanceDashboard = ({ user }) => {
-  if (!isLecturerRole(user)) {
+  // Student delegates (class or departmental course) also get the launcher;
+  // the API re-checks every launch, so this gate is only about the UI.
+  const delegated = Boolean(user?.delegations?.can_launch_attendance);
+  if (!isLecturerRole(user) && !delegated) {
     return <StudentAttendance user={user} />;
   }
   return <LecturerAttendance user={user} />;

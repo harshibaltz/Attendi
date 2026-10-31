@@ -40,18 +40,22 @@ import CourseDetail from './Pages/Lessons/CourseDetail';
 import { authApi } from './lib/auth';
 import { getDisplayName, normalizeRole, normalizeUser } from './lib/profile';
 
-const RequireRole = ({ role, children }) => {
+const RequireRole = ({ role, allowDelegates = false, children }) => {
   let userRole = 'student';
+  let storedUser = null;
   try {
     const stored = localStorage.getItem('fet_user');
-    const user = stored ? JSON.parse(stored) : null;
-    userRole = user?.role || localStorage.getItem('fet_user_role') || 'student';
+    storedUser = stored ? JSON.parse(stored) : null;
+    userRole = storedUser?.role || localStorage.getItem('fet_user_role') || 'student';
   } catch {
     userRole = localStorage.getItem('fet_user_role') || 'student';
   }
 
   const allowed = Array.isArray(role) ? role : [role];
-  if (!allowed.some((r) => normalizeRole(userRole) === normalizeRole(r))) {
+  const delegatedStudent = allowDelegates
+    && normalizeRole(userRole) === 'student'
+    && Boolean(storedUser?.delegations?.can_launch_attendance);
+  if (!delegatedStudent && !allowed.some((r) => normalizeRole(userRole) === normalizeRole(r))) {
     return <Navigate to="/" replace />;
   }
   return children;
@@ -273,7 +277,7 @@ function App() {
                   <Route path="/support" element={<CustomerCare user={user} />} />
                   <Route
                     path="/attendance/sessions/:sessionId"
-                    element={<RequireRole role={['lecturer', 'admin']}><SessionDetail /></RequireRole>}
+                    element={<RequireRole role={['lecturer', 'admin']} allowDelegates><SessionDetail /></RequireRole>}
                   />
                 <Route path="/projects" element={<ProjectsList />} />
                 <Route path="/projects/:id" element={<ProjectDetails />} />

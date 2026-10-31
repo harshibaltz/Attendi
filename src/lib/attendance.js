@@ -10,8 +10,18 @@ export const attendanceApi = {
   // Lecturer: the offerings they teach (used to launch sessions)
   lecturerCourses: () => api.get('/lecturers/me/courses/').then(unwrap),
 
+  // Anyone allowed to run attendance: taught courses plus delegated ones.
+  // Delegates are students, so this is the picker that works for every role.
+  launchableCourses: () => api.get('/attendance/launchable-courses/').then(unwrap),
+
   // Student: courses they are enrolled in
   myCourses: () => api.get('/students/me/courses/').then(unwrap),
+
+  // Departmental course delegates (course-wide attendance rights)
+  courseDelegates: (courseId) =>
+    api.get(`/courses/${courseId}/department-delegates/`).then(unwrap),
+  setCourseDelegates: (courseId, studentIds) =>
+    api.post(`/courses/${courseId}/department-delegates/`, { student_ids: studentIds }).then(unwrap),
 
   // Start a flexible attendance session (creates ClassSession + AttendanceSession)
   startFlex: (data) => api.post('/attendance/start-flex/', data).then(unwrap),
