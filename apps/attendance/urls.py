@@ -5,6 +5,7 @@ from . import views
 urlpatterns = [
     path("class-sessions/<uuid:session_id>/attendance/", views.StartAttendanceView.as_view(), name="start-attendance"),
     path("attendance/sessions/", views.MyAttendanceSessionsView.as_view(), name="my-attendance-sessions"),
+    path("attendance/launchable-courses/", views.LaunchableCoursesView.as_view(), name="launchable-courses"),
     path("attendance/start-flex/", views.FlexibleStartAttendanceView.as_view(), name="start-attendance-flex"),
     path("attendance/offline-sync/", views.OfflineSyncView.as_view(), name="attendance-offline-sync"),
     path("attendance/<uuid:attendance_session_id>/checkpoints/", views.CheckpointsView.as_view(), name="checkpoints"),

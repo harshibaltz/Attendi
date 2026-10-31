@@ -83,6 +83,14 @@ class Course(TimeStampedUUIDModel):
     credit_units = models.PositiveIntegerField(default=3)
     level = models.CharField(max_length=10, blank=True, default="")
     status = models.CharField(max_length=20, default="ACTIVE")
+    # Students appointed to run attendance for this course across every
+    # offering/section of it (departmental course delegates).
+    department_delegates = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name="department_delegate_courses",
+        help_text="Students who may launch attendance for any offering of this course.",
+    )
 
     class Meta:
         ordering = ["department__code", "code"]

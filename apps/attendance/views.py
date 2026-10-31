@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Count, Q, Sum
+from django.db.models import Case, Count, IntegerField, Q, Sum, When
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
@@ -16,15 +16,19 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
-from apps.academics.models import ClassDefinition, ClassSchedule, ClassSession, CourseOffering, Enrollment
+from apps.academics.models import (
+    ClassDefinition, ClassSchedule, ClassSession, CourseOffering, Enrollment, Semester,
+)
+from apps.academics.serializers import ClassScheduleSerializer
 from apps.academics.services import enroll_cohort
 from apps.core.scoping import can_administer_offering, is_offering_teacher, scope_by_department
-from apps.core.permissions import IsLecturer, IsLecturerOrAdmin, IsStudent
+from apps.core.permissions import IsLecturer, IsStudent
 from apps.core.throttling import PollingRateThrottle
 from apps.audit.services import audit
 
 from .models import AttendanceCheckpoint, AttendanceRecord, AttendanceSession, PointsLedger
 from .offline import record_v2_scan
+from .permissions import can_launch_attendance, launchable_offerings
 from .points import POINTS, award_manual_points, award_station_points, auto_select_stations
 from .read_cache import (
     cached_read, history_key, is_enrolled, points_key, session_checkpoints,
@@ -47,13 +51,15 @@ ADMIN_ROLES = {"SYSTEM_ADMIN", "FACULTY_ADMIN", "DEPARTMENT_ADMIN"}
 
 
 def _can_manage_attendance(user, offering, lecturer_id):
-    if user.role in ADMIN_ROLES:
-        return can_administer_offering(user, offering)
-    if user.role != "LECTURER":
+    if not getattr(user, "is_authenticated", False):
         return False
-    # A co-lecturer may run attendance for the offering even when another
-    # lecturer owns the class definition or opened the session.
-    return lecturer_id == user.id or is_offering_teacher(user, offering)
+    # Whoever opened the session owns it, even when they are a student
+    # delegate rather than the assigned lecturer.
+    if lecturer_id and lecturer_id == user.id:
+        return True
+    # A co-lecturer, the class delegate or a departmental course delegate may
+    # run attendance for the offering.
+    return can_launch_attendance(user, offering)
 
 
 def _parse_headcount(value):
@@ -87,7 +93,7 @@ class StartAttendanceView(APIView):
 
     Lecturer starts an attendance session for a class.
     """
-    permission_classes = [IsAuthenticated, IsLecturerOrAdmin]
+    permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "attendance_start"
 
@@ -131,7 +137,7 @@ class FlexibleStartAttendanceView(APIView):
       duration_seconds (optional token validity, default 60, max 10800)
     """
 
-    permission_classes = [IsAuthenticated, IsLecturerOrAdmin]
+    permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "attendance_start"
 
@@ -269,7 +275,7 @@ class AutoSelectStationsView(APIView):
     stations (FR-047). Auto stations earn full points when used.
     """
 
-    permission_classes = [IsAuthenticated, IsLecturerOrAdmin]
+    permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "attendance_admin"
 
@@ -336,7 +342,7 @@ class ManualAttendanceView(APIView):
     Manual entries earn ZERO points (FR-048) to discourage skipping the scan.
     """
 
-    permission_classes = [IsAuthenticated, IsLecturerOrAdmin]
+    permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "attendance_admin"
 
@@ -378,7 +384,7 @@ class ManualAttendanceBatchView(APIView):
     of failing the whole batch. Manual entries still earn ZERO points (FR-048).
     """
 
-    permission_classes = [IsAuthenticated, IsLecturerOrAdmin]
+    permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "attendance_admin"
     MAX_BATCH = 15
@@ -471,7 +477,7 @@ class StudentOfClassView(APIView):
     Idempotent - calling twice returns the same winner.
     """
 
-    permission_classes = [IsAuthenticated, IsLecturerOrAdmin]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, attendance_session_id):
         from .points import award_student_of_class
@@ -620,7 +626,7 @@ class CheckpointsView(APIView):
 
     Lecturer selects checkpoint students who are physically present (BR-050-053).
     """
-    permission_classes = [IsAuthenticated, IsLecturerOrAdmin]
+    permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "attendance_admin"
 
@@ -689,7 +695,7 @@ class CheckpointDetailView(APIView):
 
     Removes a station the lecturer picked by mistake."""
 
-    permission_classes = [IsAuthenticated, IsLecturerOrAdmin]
+    permission_classes = [IsAuthenticated]
 
     def delete(self, request, attendance_session_id, checkpoint_id):
         session = get_object_or_404(AttendanceSession, id=attendance_session_id)
@@ -714,17 +720,21 @@ class TokensView(APIView):
 
     Generate new QR tokens (rotation, FR-043).
     """
-    permission_classes = [IsAuthenticated, IsLecturerOrAdmin]
+    permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "attendance_admin"
 
     def post(self, request, attendance_session_id):
         snapshot = session_snapshot(attendance_session_id)
-        if request.user.role in ADMIN_ROLES:
-            offering = get_object_or_404(CourseOffering, id=snapshot["offering_id"])
-            allowed = can_administer_offering(request.user, offering)
-        else:
-            allowed = request.user.role == "LECTURER" and str(request.user.id) == snapshot["lecturer_id"]
+        # Fast path: the session owner needs no extra queries, which keeps the
+        # live token rotation served entirely from the cache snapshot.
+        allowed = str(request.user.id) == snapshot["lecturer_id"]
+        if not allowed:
+            offering = get_object_or_404(
+                CourseOffering.objects.select_related("course", "department"),
+                id=snapshot["offering_id"],
+            )
+            allowed = _can_manage_attendance(request.user, offering, None)
         if not allowed:
             return Response(
                 {"success": False, "error": {"code": "FORBIDDEN", "message": "Only the session lecturer can generate tokens."}},
@@ -874,7 +884,7 @@ class StationCredentialView(APIView):
 class ProjectorCredentialView(APIView):
     """Give the session lecturer a projector-scoped v2 signing key."""
 
-    permission_classes = [IsAuthenticated, IsLecturerOrAdmin]
+    permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "attendance_admin"
 
@@ -902,7 +912,7 @@ class CloseAttendanceView(APIView):
     has checked in). Closes the window for further scans.
     """
 
-    permission_classes = [IsAuthenticated, IsLecturerOrAdmin]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, attendance_session_id):
         session = get_object_or_404(AttendanceSession, id=attendance_session_id)
@@ -937,10 +947,12 @@ class AttendanceStatusView(APIView):
                 return Response(status=status.HTTP_403_FORBIDDEN)
         if request.user.role == "STUDENT":
             if not is_enrolled(request.user.id, snapshot["offering_id"]):
-                return Response(
-                    {"success": False, "error": {"code": "FORBIDDEN", "message": "Access denied."}},
-                    status=status.HTTP_403_FORBIDDEN,
-                )
+                offering = CourseOffering.objects.filter(id=snapshot["offering_id"]).select_related("course").first()
+                if offering is None or not can_launch_attendance(request.user, offering):
+                    return Response(
+                        {"success": False, "error": {"code": "FORBIDDEN", "message": "Access denied."}},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
         elif request.user.role not in ADMIN_ROLES and (
             request.user.role != "LECTURER" or str(request.user.id) != snapshot["lecturer_id"]
         ):
@@ -961,6 +973,56 @@ class AttendanceStatusView(APIView):
             "headcount_remaining": headcount_remaining,
             "headcount_reached_at": snapshot["headcount_reached_at"],
         })
+
+
+class LaunchableCoursesView(APIView):
+    """GET /api/v1/attendance/launchable-courses/
+
+    The offerings this user may open an attendance session for: their taught
+    courses, plus any offering covered by a departmental course delegation or
+    a class delegation. Powers the course picker for delegates, who are
+    students rather than lecturers.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        active_semester = Semester.objects.filter(is_active=True).first()
+        qs = (
+            launchable_offerings(
+                request.user,
+                CourseOffering.objects.select_related(
+                    "course", "department", "semester", "lecturer", "co_lecturer"
+                ).filter(status="ACTIVE"),
+            )
+            .order_by(
+                Case(
+                    When(semester=active_semester, then=0),
+                    default=1,
+                    output_field=IntegerField(),
+                ),
+                "course__code",
+            )
+        )
+        result = []
+        for off in qs:
+            result.append({
+                "offering_id": str(off.id),
+                "course_code": off.course.code,
+                "course_title": off.course.title,
+                "department": off.department.name if off.department else "",
+                "semester": off.semester.name,
+                "lecturer_name": off.lecturer.get_full_name() if off.lecturer else "",
+                "enrolled_students": off.enrollments.filter(status=Enrollment.Status.ACTIVE).count(),
+                "class_definitions": [
+                    {"id": str(cd.id), "name": cd.name, "class_type": cd.class_type, "location": cd.location}
+                    for cd in off.class_definitions.all()
+                ],
+                "schedules": ClassScheduleSerializer(
+                    off.schedules.filter(is_active=True), many=True
+                ).data,
+            })
+        return Response(result)
 
 
 class MyAttendanceSessionsView(APIView):
@@ -1050,7 +1112,7 @@ class SessionRecordsView(APIView):
         if request.user.role in ADMIN_ROLES:
             allowed = can_administer_offering(request.user, offering)
         else:
-            allowed = request.user.id == owner or is_offering_teacher(request.user, offering)
+            allowed = request.user.id == owner or can_launch_attendance(request.user, offering)
         if not allowed:
             return Response(
                 {"success": False, "error": {"code": "FORBIDDEN", "message": "You can only view attendance for classes you teach."}},
@@ -1081,7 +1143,7 @@ class AttendanceSessionDetailView(APIView):
         if request.user.role in ADMIN_ROLES:
             allowed = can_administer_offering(request.user, offering)
         else:
-            allowed = request.user.id == owner or is_offering_teacher(request.user, offering)
+            allowed = request.user.id == owner or can_launch_attendance(request.user, offering)
         if not allowed:
             return Response(
                 {"success": False, "error": {"code": "FORBIDDEN", "message": "You can only view attendance for classes you teach."}},
@@ -1162,7 +1224,7 @@ class CorrectRecordView(APIView):
     """PATCH /api/v1/attendance/records/{record_id} - correct attendance (BR-042).
     DELETE /api/v1/attendance/records/{record_id} - remove a bad/test record.
     Both actions are recorded in the audit log; never silently overwrite."""
-    permission_classes = [IsAuthenticated, IsLecturerOrAdmin]
+    permission_classes = [IsAuthenticated]
 
     def patch(self, request, record_id):
         record = get_object_or_404(AttendanceRecord, id=record_id)

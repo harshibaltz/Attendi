@@ -2,6 +2,7 @@
 
 Faculty, Department, Course, Offering, Enrollment, ClassDefinition, ClassSession.
 """
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db import models as db_models
 from django.shortcuts import get_object_or_404
@@ -487,9 +488,23 @@ class MyCoursesView(APIView):
             course_offering__semester=active_semester,
             status=Enrollment.Status.ACTIVE,
         ).select_related("course_offering", "course_offering__course", "course_offering__department")
+        # Delegates are students, so this is where the frontend learns which
+        # of their enrolled courses they are allowed to launch attendance for.
+        from apps.projects.models import ClassDelegate
+
+        class_delegate_offerings = set(
+            ClassDelegate.objects.filter(student=request.user).values_list(
+                "course_offering_id", flat=True
+            )
+        )
+        department_delegate_courses = set(
+            request.user.department_delegate_courses.values_list("id", flat=True)
+        )
         result = []
         for e in enrollments:
             off = e.course_offering
+            is_class_delegate = off.id in class_delegate_offerings
+            is_department_delegate = off.course_id in department_delegate_courses
             result.append({
                 "enrollment_id": e.id,
                 "offering_id": off.id,
@@ -501,8 +516,108 @@ class MyCoursesView(APIView):
                 "materials_count": off.materials.count(),
                 "announcements_count": off.announcements.count(),
                 "assignments_count": off.assignments.count(),
+                "is_class_delegate": is_class_delegate,
+                "is_department_delegate": is_department_delegate,
+                "can_launch_attendance": is_class_delegate or is_department_delegate,
             })
         return Response(result)
+
+
+class DepartmentCourseDelegatesView(APIView):
+    """GET/POST /api/v1/courses/{course_id}/department-delegates/
+
+    Appoint the students who may launch attendance for every offering of a
+    course. Open to scoped administrators of the course's department and to
+    lecturers teaching an offering of the course.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @staticmethod
+    def _may_appoint(user, course):
+        if can_administer_department(user, course.department):
+            return True
+        return CourseOffering.objects.filter(
+            db_models.Q(lecturer=user) | db_models.Q(co_lecturer=user), course=course
+        ).exists()
+
+    @staticmethod
+    def _payload(course):
+        delegates = course.department_delegates.select_related("student_profile").order_by(
+            "first_name", "last_name"
+        )
+        candidates = (
+            User.objects.filter(
+                role=User.Role.STUDENT,
+                enrollments__course_offering__course=course,
+                enrollments__status=Enrollment.Status.ACTIVE,
+            )
+            .select_related("student_profile")
+            .distinct()
+            .order_by("first_name", "last_name")
+        )
+
+        def row(user):
+            profile = getattr(user, "student_profile", None)
+            return {
+                "id": str(user.id),
+                "full_name": user.get_full_name(),
+                "email": user.email,
+                "student_number": getattr(profile, "student_number", "") or "",
+            }
+
+        return {
+            "course_id": str(course.id),
+            "course_code": course.code,
+            "delegates": [row(u) for u in delegates],
+            "candidates": [row(u) for u in candidates],
+        }
+
+    def get(self, request, course_id):
+        course = get_object_or_404(Course, id=course_id)
+        if not self._may_appoint(request.user, course):
+            return Response(
+                {"success": False, "error": {"code": "FORBIDDEN", "message": "Only the course lecturer or an administrator can manage delegates."}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return Response(self._payload(course))
+
+    def post(self, request, course_id):
+        course = get_object_or_404(Course, id=course_id)
+        if not self._may_appoint(request.user, course):
+            return Response(
+                {"success": False, "error": {"code": "FORBIDDEN", "message": "Only the course lecturer or an administrator can manage delegates."}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        raw_ids = request.data.get("student_ids")
+        if not isinstance(raw_ids, list):
+            return Response(
+                {"success": False, "error": {"code": "VALIDATION_ERROR", "message": "student_ids must be a list."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            students = list(
+                User.objects.filter(
+                    id__in=raw_ids,
+                    role=User.Role.STUDENT,
+                    enrollments__course_offering__course=course,
+                    enrollments__status=Enrollment.Status.ACTIVE,
+                ).distinct()
+            )
+        except (ValidationError, ValueError, TypeError):
+            students = []
+        if len(students) != len({str(value) for value in raw_ids}):
+            return Response(
+                {"success": False, "error": {"code": "VALIDATION_ERROR", "message": "Every delegate must be an actively enrolled student of this course."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        course.department_delegates.set(students)
+        audit(
+            user=request.user, action="COURSE_DELEGATES_UPDATED",
+            resource_type="Course", resource_id=course.id, request=request,
+            metadata={"delegate_ids": [str(s.id) for s in students]},
+        )
+        return Response(self._payload(course))
 
 
 class StudentRegistrationView(APIView):
@@ -720,6 +835,7 @@ class EligibleStudentsView(APIView):
 
     def get(self, request, session_id):
         from apps.attendance.models import AttendanceSession
+        from apps.attendance.permissions import can_launch_attendance
 
         cs = get_object_or_404(ClassSession, id=session_id)
         offering = cs.class_definition.course_offering
@@ -735,6 +851,7 @@ class EligibleStudentsView(APIView):
             or is_offering_teacher(request.user, offering)
             or cs.class_definition.lecturer_id == request.user.id
             or request.user.id in running
+            or can_launch_attendance(request.user, offering)
         )
         if request.user.role in {User.Role.FACULTY_ADMIN, User.Role.DEPARTMENT_ADMIN}:
             allowed = can_administer_offering(request.user, cs.class_definition.course_offering)

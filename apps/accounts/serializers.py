@@ -2,7 +2,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.db import IntegrityError, transaction
 from rest_framework import serializers
 
-from apps.academics.models import Department, Faculty
+from apps.academics.models import CourseOffering, Department, Faculty
 
 from .models import LecturerProfile, StudentProfile, User
 
@@ -304,6 +304,7 @@ class MeSerializer(serializers.ModelSerializer):
     student_profile = serializers.SerializerMethodField()
     lecturer_profile = serializers.SerializerMethodField()
     admin_scope = serializers.SerializerMethodField()
+    delegations = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -320,6 +321,7 @@ class MeSerializer(serializers.ModelSerializer):
             "student_profile",
             "lecturer_profile",
             "admin_scope",
+            "delegations",
             "created_at",
             "updated_at",
         ]
@@ -339,6 +341,28 @@ class MeSerializer(serializers.ModelSerializer):
                 "department_name": obj.admin_department.name,
             }
         return None
+
+    def get_delegations(self, obj):
+        """Attendance delegation flags for students (null for other roles).
+
+        The frontend uses this to show the attendance launcher; the backend
+        still re-checks every launch with the same helper.
+        """
+        if obj.role != User.Role.STUDENT:
+            return None
+        from apps.attendance.permissions import launchable_offerings
+        from apps.projects.models import ClassDelegate
+
+        offerings = launchable_offerings(
+            obj, CourseOffering.objects.filter(status="ACTIVE")
+        )
+        offering_ids = [str(pk) for pk in offerings.values_list("id", flat=True)]
+        return {
+            "is_class_delegate": ClassDelegate.objects.filter(student=obj).exists(),
+            "is_department_delegate": obj.department_delegate_courses.exists(),
+            "can_launch_attendance": bool(offering_ids),
+            "offering_ids": offering_ids,
+        }
 
     def get_student_profile(self, obj):
         profile = getattr(obj, "student_profile", None)
