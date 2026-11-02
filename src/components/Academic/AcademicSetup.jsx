@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Building2, CalendarRange, Plus, Check, X, BookOpen, UserCheck, ChevronDown } from 'lucide-react';
+import { Building2, CalendarRange, Plus, Check, X, BookOpen, UserCheck, ChevronDown, Download } from 'lucide-react';
 import { SectionHeader, Card, CardBody, CardHead, DataTable, Pill, Callout, EmptyState, Tabs } from '../UI';
 import { academicsApi } from '../../lib/academics';
 import { errorMessage } from '../../lib/enrollment';
 import { formatDate } from '../../lib/format';
+import { downloadCsv } from '../../lib/download';
 
 const SemesterPanel = () => {
   const [rows, setRows] = useState([]);
@@ -591,6 +592,20 @@ const CourseOfferingPanel = () => {
 
 const AcademicSetup = () => {
   const [tab, setTab] = useState('semesters');
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
+
+  const downloadCourses = async () => {
+    setDownloading(true);
+    setDownloadError('');
+    try {
+      await downloadCsv('/courses/export/', 'courses.csv');
+    } catch (err) {
+      setDownloadError(errorMessage(err, 'Could not download the course catalogue.'));
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -599,7 +614,19 @@ const AcademicSetup = () => {
         icon={Building2}
         title="Academic setup"
         subtitle="Manage active semesters, departments, and lecturer assignments for course offerings."
+        actions={(
+          <button
+            type="button"
+            onClick={downloadCourses}
+            disabled={downloading}
+            className="fet-btn-secondary"
+          >
+            <Download size={15} />
+            {downloading ? 'Preparing…' : 'Download courses'}
+          </button>
+        )}
       />
+      {downloadError ? <Callout tone="bad">{downloadError}</Callout> : null}
       <Tabs
         active={tab}
         onChange={setTab}

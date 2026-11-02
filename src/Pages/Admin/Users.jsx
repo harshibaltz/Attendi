@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Users as UsersIcon, Search, UserCheck, UserX, Eye, X } from 'lucide-react';
+import { Users as UsersIcon, Search, UserCheck, UserX, Eye, X, Download } from 'lucide-react';
 import { SectionHeader, Card, CardBody, CardHead, Callout, DataTable, EmptyState, Pill } from '../../components/UI';
 import { usersApi } from '../../lib/users';
 import { errorMessage } from '../../lib/enrollment';
+import { downloadCsv } from '../../lib/download';
 
 const ROLE_LABELS = {
   STUDENT: 'Student',
@@ -34,6 +35,19 @@ const Users = ({ user: currentUser }) => {
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [stateFilter, setStateFilter] = useState('ALL');
   const [selectedDeleted, setSelectedDeleted] = useState(null);
+  const [downloading, setDownloading] = useState(false);
+
+  const download = async () => {
+    setDownloading(true);
+    setError('');
+    try {
+      await downloadCsv('/users/export/', 'users.csv');
+    } catch (err) {
+      setError(errorMessage(err, 'Could not download the account directory.'));
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -104,6 +118,15 @@ const Users = ({ user: currentUser }) => {
         subtitle="Every account on the platform. Self-deleted accounts stay here with their original identifiers, feedback and academic records."
         actions={(
           <>
+            <button
+              type="button"
+              onClick={download}
+              disabled={downloading || loading}
+              className="fet-btn-secondary"
+            >
+              <Download size={15} />
+              {downloading ? 'Preparing…' : 'Download CSV'}
+            </button>
             <Pill tone="ok" dot>{counts.ACTIVE || 0} active</Pill>
             <Pill tone="wn" dot>{counts.SUSPENDED || 0} suspended</Pill>
             <Pill tone="bd" dot>{counts.ARCHIVED || 0} archived</Pill>
