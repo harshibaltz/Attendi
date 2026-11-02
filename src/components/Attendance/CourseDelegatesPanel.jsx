@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Users, Loader2, Check, Search, AlertCircle } from 'lucide-react';
+import { Users, Loader2, Check, Search, AlertCircle, X, UserCheck } from 'lucide-react';
 import attendanceApi from '../../lib/attendance';
 
 /**
@@ -50,6 +50,18 @@ const CourseDelegatesPanel = ({ courseId }) => {
     ));
   }, [data, query]);
 
+  const rowsById = useMemo(() => {
+    const map = new Map();
+    [...(data?.delegates || []), ...(data?.candidates || [])].forEach((row) => {
+      map.set(String(row.id), row);
+    });
+    return map;
+  }, [data]);
+
+  const selectedRows = selected.map((id) => rowsById.get(id) || { id, full_name: 'Student' });
+  const savedIds = (data?.delegates || []).map((d) => String(d.id));
+  const dirty = selected.length !== savedIds.length || selected.some((id) => !savedIds.includes(id));
+
   const toggle = (id) => {
     const key = String(id);
     setSelected((prev) => (
@@ -88,11 +100,11 @@ const CourseDelegatesPanel = ({ courseId }) => {
         <button
           type="button"
           onClick={save}
-          disabled={saving || loading || !data}
+          disabled={saving || loading || !data || !dirty}
           className="fet-btn-primary flex items-center gap-2 shrink-0"
         >
           {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
-          {saving ? 'Saving…' : 'Save'}
+          {saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}
         </button>
       </div>
 
@@ -110,8 +122,44 @@ const CourseDelegatesPanel = ({ courseId }) => {
         </div>
       ) : data ? (
         <>
+          <div className="rounded-xl border border-border-default bg-page-bg p-3">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                Currently appointed
+              </span>
+              <span className="text-xs text-text-secondary">{selected.length} delegate{selected.length === 1 ? '' : 's'}</span>
+            </div>
+            {selected.length === 0 ? (
+              <p className="text-sm text-text-secondary">
+                No delegates yet. Pick students below — they will be able to launch attendance for every class of this course.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {selectedRows.map((student) => (
+                  <span
+                    key={student.id}
+                    className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-sm text-primary"
+                  >
+                    <UserCheck size={14} />
+                    <span className="font-medium">{student.full_name || student.email}</span>
+                    {student.student_number ? (
+                      <span className="text-xs text-primary/70">{student.student_number}</span>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => toggle(student.id)}
+                      className="rounded-full p-0.5 hover:bg-primary/20"
+                      aria-label={`Remove ${student.full_name || 'delegate'}`}
+                    >
+                      <X size={13} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="flex items-center justify-between text-xs text-text-secondary">
-            <span>{selected.length} selected</span>
+            <span>Choose students to appoint</span>
             <span>{candidates.length} enrolled student{candidates.length === 1 ? '' : 's'}</span>
           </div>
           <div className="relative">

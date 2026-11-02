@@ -6,6 +6,7 @@ import {
   UserCheck, Search, ChevronDown, CheckCircle2, ClipboardCheck, ArrowRight, Download,
 } from 'lucide-react';
 import attendanceApi from '../../lib/attendance';
+import { authApi } from '../../lib/auth';
 import AttendanceSession from './AttendanceSession';
 import QRScanner from './QRScanner';
 import StationQR from './StationQR';
@@ -1333,7 +1334,29 @@ const LecturerAttendance = ({ user }) => {
 const AttendanceDashboard = ({ user }) => {
   // Student delegates (class or departmental course) also get the launcher;
   // the API re-checks every launch, so this gate is only about the UI.
-  const delegated = Boolean(user?.delegations?.can_launch_attendance);
+  const [delegated, setDelegated] = useState(Boolean(user?.delegations?.can_launch_attendance));
+
+  // A student can be appointed while already signed in. Re-read /auth/me/ so
+  // the launcher appears without a full page reload (a course card can link
+  // straight here with ?launch=<offering>).
+  useEffect(() => {
+    if (isLecturerRole(user) || delegated) return undefined;
+    let cancelled = false;
+    authApi.me()
+      .then((response) => {
+        const fresh = response?.data?.data ?? response?.data;
+        if (cancelled || !fresh?.delegations?.can_launch_attendance) return;
+        try {
+          localStorage.setItem('fet_user', JSON.stringify(fresh));
+          localStorage.setItem('fet_user_role', fresh.role || 'student');
+        } catch { /* ignore */ }
+        setDelegated(true);
+        window.dispatchEvent(new Event('fet-profile-updated'));
+      })
+      .catch(() => { /* not a delegate, or offline */ });
+    return () => { cancelled = true; };
+  }, [user, delegated]);
+
   if (!isLecturerRole(user) && !delegated) {
     return <StudentAttendance user={user} />;
   }
