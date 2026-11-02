@@ -14,6 +14,7 @@ urlpatterns = [
     path("semesters/<uuid:semester_id>/activate/", views.SemesterActivateView.as_view(), name="semester-activate"),
     path("admin/stats/", views.AdminStatsView.as_view(), name="admin-stats"),
     path("courses/", views.CourseListView.as_view(), name="course-list"),
+    path("courses/export/", views.CourseExportView.as_view(), name="course-export"),
     path("courses/<uuid:course_id>/", views.CourseDetailView.as_view(), name="course-detail"),
     path("courses/<uuid:course_id>/department-delegates/", views.DepartmentCourseDelegatesView.as_view(), name="course-department-delegates"),
     path("course-offerings/", views.CourseOfferingListView.as_view(), name="offering-list"),

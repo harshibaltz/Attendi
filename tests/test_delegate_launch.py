@@ -164,6 +164,11 @@ class TestDepartmentDelegate:
         assert resp.status_code == 200, resp.content
         assert [d["id"] for d in resp.json()["data"]["delegates"]] == [str(enrolled_student.id)]
 
+        # Reloading the page must show the same appointed student.
+        reloaded = api_client.get(f"/api/v1/courses/{course.id}/department-delegates/")
+        assert reloaded.status_code == 200, reloaded.content
+        assert [d["id"] for d in reloaded.json()["data"]["delegates"]] == [str(enrolled_student.id)]
+
         # Clearing the list removes the delegation again.
         resp = api_client.post(
             f"/api/v1/courses/{course.id}/department-delegates/",

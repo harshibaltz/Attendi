@@ -5,6 +5,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.csv_export import csv_response
+
 from apps.core.permissions import IsAdmin
 from apps.audit.services import audit
 from apps.core.scoping import can_view_user, scope_users
@@ -18,33 +20,95 @@ class MyCoursesView(APIView):
     pass
 
 
+def _user_directory(request):
+    """The scoped, filtered, ordered account directory used by list + export."""
+    role = request.query_params.get("role")
+    qs = scope_users(User.objects.select_related("student_profile", "lecturer_profile"), request.user)
+    if role:
+        qs = qs.filter(role=role.upper())
+    deleted = request.query_params.get("deleted")
+    if deleted == "1":
+        qs = qs.filter(deleted_at__isnull=False)
+    elif deleted == "0":
+        qs = qs.filter(deleted_at__isnull=True)
+    search = (request.query_params.get("search") or "").strip()
+    if search:
+        qs = qs.filter(
+            Q(email__icontains=search)
+            | Q(deleted_from_email__icontains=search)
+            | Q(first_name__icontains=search)
+            | Q(last_name__icontains=search)
+            | Q(deleted_from_student_number__icontains=search)
+            | Q(deleted_from_staff_number__icontains=search)
+            | Q(student_profile__student_number__icontains=search)
+            | Q(lecturer_profile__staff_number__icontains=search)
+        )
+    return qs.order_by("email")
+
+
 class UserListView(APIView):
     permission_classes = [IsAuthenticated, IsAdmin]
 
     def get(self, request):
-        role = request.query_params.get("role")
-        qs = scope_users(User.objects.select_related("student_profile", "lecturer_profile"), request.user)
-        if role:
-            qs = qs.filter(role=role.upper())
-        deleted = request.query_params.get("deleted")
-        if deleted == "1":
-            qs = qs.filter(deleted_at__isnull=False)
-        elif deleted == "0":
-            qs = qs.filter(deleted_at__isnull=True)
-        search = (request.query_params.get("search") or "").strip()
-        if search:
-            qs = qs.filter(
-                Q(email__icontains=search)
-                | Q(deleted_from_email__icontains=search)
-                | Q(first_name__icontains=search)
-                | Q(last_name__icontains=search)
-                | Q(deleted_from_student_number__icontains=search)
-                | Q(deleted_from_staff_number__icontains=search)
-                | Q(student_profile__student_number__icontains=search)
-                | Q(lecturer_profile__staff_number__icontains=search)
-            )
-        qs = qs.order_by("email")
-        return Response(AdminUserSerializer(qs, many=True).data)
+        return Response(AdminUserSerializer(_user_directory(request), many=True).data)
+
+
+class UserExportView(APIView):
+    """GET /api/v1/users/export/ - the account directory as CSV.
+
+    Honours the same role/deleted/search filters as the list, and the same
+    scoping (system admin = everyone, faculty/department admin = their unit).
+    """
+
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    HEADER = [
+        "Full name",
+        "Email",
+        "Role",
+        "Account status",
+        "Is active",
+        "Matricule",
+        "Staff number",
+        "Department",
+        "Level",
+        "Last login",
+        "Created at",
+        "Deleted at",
+        "Deletion reason",
+        "Original email (deleted account)",
+        "Original matricule (deleted account)",
+    ]
+
+    def get(self, request):
+        from django.utils import timezone as tz
+
+        rows = AdminUserSerializer(_user_directory(request), many=True).data
+        filename = f"users-{tz.localdate().isoformat()}.csv"
+        return csv_response(
+            filename,
+            self.HEADER,
+            [
+                [
+                    row.get("full_name"),
+                    row.get("email"),
+                    row.get("role"),
+                    row.get("status"),
+                    "Yes" if row.get("is_active") else "No",
+                    row.get("student_number") or "",
+                    row.get("staff_number") or "",
+                    row.get("department") or "",
+                    row.get("level") or "",
+                    row.get("last_login_at") or "",
+                    row.get("created_at") or "",
+                    row.get("deleted_at") or "",
+                    row.get("deletion_reason") or "",
+                    row.get("deleted_from_email") or "",
+                    row.get("deleted_from_student_number") or "",
+                ]
+                for row in rows
+            ],
+        )
 
 
 class UserDetailView(APIView):

@@ -19,6 +19,7 @@ from apps.core.scoping import (
     is_offering_teacher, scope_by_department, scope_users,
 )
 from apps.audit.services import audit
+from apps.core.csv_export import csv_response
 from apps.learning.models import Assessment, AssessmentMark, AssignmentSubmission
 
 from .models import (
@@ -213,6 +214,74 @@ class CourseListView(APIView):
         course = s.save()
         audit(user=request.user, action="COURSE_CREATED", resource_type="Course", resource_id=course.id, request=request)
         return Response(CourseSerializer(course).data, status=status.HTTP_201_CREATED)
+
+
+class CourseExportView(APIView):
+    """GET /api/v1/courses/export/ - every course the admin can see, as CSV.
+
+    Columns include the owning department/faculty, curriculum details and the
+    live usage figures (number of offerings and active enrolments).
+    """
+
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    HEADER = [
+        "Course code",
+        "Course title",
+        "Department",
+        "Faculty",
+        "Level",
+        "Credit units",
+        "Status",
+        "Offerings",
+        "Active enrolments",
+    ]
+
+    def get(self, request):
+        from django.utils import timezone as tz
+
+        qs = Course.objects.select_related("department__faculty").annotate(
+            offering_count=db_models.Count("offerings", distinct=True),
+            active_enrolments=db_models.Count(
+                "offerings__enrollments",
+                filter=db_models.Q(offerings__enrollments__status=Enrollment.Status.ACTIVE),
+                distinct=True,
+            ),
+        )
+        qs = scope_by_department(qs, request.user, "department")
+
+        department_id = request.query_params.get("department_id")
+        level = request.query_params.get("level")
+        search = (request.query_params.get("search") or "").strip()
+        if department_id:
+            qs = qs.filter(department_id=department_id)
+        if level:
+            qs = qs.filter(level=level)
+        if search:
+            qs = qs.filter(
+                db_models.Q(code__icontains=search) | db_models.Q(title__icontains=search)
+            )
+        qs = qs.order_by("department__code", "code")
+
+        filename = f"courses-{tz.localdate().isoformat()}.csv"
+        return csv_response(
+            filename,
+            self.HEADER,
+            [
+                [
+                    course.code,
+                    course.title,
+                    course.department.name if course.department else "",
+                    course.department.faculty.name if course.department and course.department.faculty else "",
+                    course.level or "",
+                    course.credit_units,
+                    course.status,
+                    course.offering_count,
+                    course.active_enrolments,
+                ]
+                for course in qs
+            ],
+        )
 
 
 class CourseDetailView(APIView):
