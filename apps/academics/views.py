@@ -595,12 +595,27 @@ class EnrollmentListView(APIView):
 
     def delete(self, request, offering_id, student_id):
         offering = get_object_or_404(CourseOffering, id=offering_id)
-        if request.user.role not in {"SYSTEM_ADMIN", "FACULTY_ADMIN", "DEPARTMENT_ADMIN", "LECTURER"}:
-            return Response(status=status.HTTP_403_FORBIDDEN)
-        if request.user.role in {User.Role.FACULTY_ADMIN, User.Role.DEPARTMENT_ADMIN} and not can_administer_offering(request.user, offering):
-            return Response(status=status.HTTP_403_FORBIDDEN)
-        if request.user.role == User.Role.LECTURER and not is_offering_teacher(request.user, offering):
-            return Response(status=status.HTTP_403_FORBIDDEN)
+
+        if request.user.role == User.Role.STUDENT:
+            # A student may withdraw from their own registration only.
+            if str(request.user.id) != str(student_id):
+                return Response(
+                    {"success": False, "error": {"code": "FORBIDDEN", "message": "You can only drop your own courses."}},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+            if not offering.semester.is_active:
+                return Response(
+                    {"success": False, "error": {"code": "FORBIDDEN", "message": "You can only drop courses in the active semester."}},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        else:
+            if request.user.role not in {"SYSTEM_ADMIN", "FACULTY_ADMIN", "DEPARTMENT_ADMIN", "LECTURER"}:
+                return Response(status=status.HTTP_403_FORBIDDEN)
+            if request.user.role in {User.Role.FACULTY_ADMIN, User.Role.DEPARTMENT_ADMIN} and not can_administer_offering(request.user, offering):
+                return Response(status=status.HTTP_403_FORBIDDEN)
+            if request.user.role == User.Role.LECTURER and not is_offering_teacher(request.user, offering):
+                return Response(status=status.HTTP_403_FORBIDDEN)
+
         enrollment = get_object_or_404(Enrollment, student_id=student_id, course_offering=offering, status=Enrollment.Status.ACTIVE)
         enrollment.status = Enrollment.Status.DROPPED
         from django.utils import timezone
