@@ -6,12 +6,14 @@ import { errorMessage } from '../../lib/enrollment';
 import { formatDate } from '../../lib/format';
 import { downloadCsv } from '../../lib/download';
 
-const SemesterPanel = () => {
+const SemesterPanel = ({ canEditDeadline = false }) => {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState('');
+  const [deadlineDrafts, setDeadlineDrafts] = useState({});
+  const [savingDeadline, setSavingDeadline] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -26,6 +28,27 @@ const SemesterPanel = () => {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    setDeadlineDrafts(Object.fromEntries(rows.map((row) => [row.id, row.registration_deadline || ''])));
+  }, [rows]);
+
+  const saveDeadline = async (semester) => {
+    setSavingDeadline(semester.id);
+    setError('');
+    setNotice('');
+    try {
+      await academicsApi.updateSemester(semester.id, {
+        registration_deadline: deadlineDrafts[semester.id] || null,
+      });
+      setNotice(`Registration deadline for ${semester.name} updated.`);
+      await load();
+    } catch (err) {
+      setError(errorMessage(err, 'Could not update the registration deadline.'));
+    } finally {
+      setSavingDeadline('');
+    }
+  };
 
   const activate = async (semester) => {
     setBusy(semester.id);
@@ -51,8 +74,33 @@ const SemesterPanel = () => {
     {
       key: 'registration_deadline',
       label: 'Registration closes',
-      width: '160px',
-      render: (r) => (r.registration_deadline ? formatDate(r.registration_deadline) : '—'),
+      width: '230px',
+      render: (r) => {
+        if (!canEditDeadline) {
+          return r.registration_deadline ? formatDate(r.registration_deadline) : '—';
+        }
+        const draft = deadlineDrafts[r.id] ?? (r.registration_deadline || '');
+        const dirty = draft !== (r.registration_deadline || '');
+        return (
+          <div className="flex items-center gap-1.5">
+            <input
+              type="date"
+              value={draft}
+              onChange={(e) => setDeadlineDrafts((current) => ({ ...current, [r.id]: e.target.value }))}
+              className="fet-input text-[12px] py-1"
+              aria-label={`Registration deadline for ${r.name}`}
+            />
+            <button
+              type="button"
+              onClick={() => saveDeadline(r)}
+              disabled={!dirty || savingDeadline === r.id}
+              className="fet-btn-secondary text-[11px] px-2 py-1 shrink-0"
+            >
+              {savingDeadline === r.id ? '...' : 'Save'}
+            </button>
+          </div>
+        );
+      },
     },
     {
       key: 'is_active',
@@ -374,6 +422,7 @@ const draftFor = (row) => ({
   lecturer: row.lecturer || '',
   co_lecturer: row.co_lecturer || '',
   departments: (row.departments || []).map(String).filter((id) => id !== String(row.department)),
+  registration_deadline: row.registration_deadline || '',
 });
 
 const CourseOfferingPanel = () => {
@@ -433,6 +482,7 @@ const CourseOfferingPanel = () => {
     return (
       draft.lecturer !== original.lecturer ||
       draft.co_lecturer !== original.co_lecturer ||
+      draft.registration_deadline !== original.registration_deadline ||
       !sameSet(draft.departments, original.departments)
     );
   };
@@ -452,6 +502,7 @@ const CourseOfferingPanel = () => {
         lecturer: draft.lecturer || null,
         co_lecturer: draft.co_lecturer || null,
         departments: draft.departments,
+        registration_deadline: draft.registration_deadline || null,
       });
       setNotice(`${row.course_code} updated.`);
       await load();
@@ -525,6 +576,19 @@ const CourseOfferingPanel = () => {
       },
     },
     {
+      key: 'registration_deadline',
+      label: 'Registration closes',
+      render: (row) => (
+        <input
+          type="date"
+          value={draftOf(row).registration_deadline}
+          onChange={(e) => updateDraft(row, { registration_deadline: e.target.value })}
+          className="fet-input min-w-[150px] text-[12px] py-1"
+          aria-label={`Registration deadline for ${row.course_code}`}
+        />
+      ),
+    },
+    {
       key: 'departments',
       label: 'Shared with',
       render: (row) => (
@@ -569,7 +633,8 @@ const CourseOfferingPanel = () => {
         Assign each course offering to its lead lecturer and, optionally, a co-lecturer
         (search by name, email or initials). Both get the classroom on their panel and
         can take attendance. Use <b>Shared with</b> so students from other departments
-        can also register. Active-semester offerings are listed first.
+        can also register, and set a per-course <b>Registration closes</b> date to
+        override the semester-wide deadline. Active-semester offerings are listed first.
         {unassigned > 0 ? <span className="block mt-1">{unassigned} offering{unassigned === 1 ? '' : 's'} currently unassigned.</span> : null}
       </Callout>
       <Card accent="hub">
@@ -592,6 +657,12 @@ const CourseOfferingPanel = () => {
 
 const AcademicSetup = () => {
   const [tab, setTab] = useState('semesters');
+  let isSystemAdmin = false;
+  try {
+    isSystemAdmin = JSON.parse(localStorage.getItem('fet_user') || '{}').role === 'SYSTEM_ADMIN';
+  } catch {
+    isSystemAdmin = false;
+  }
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
 
@@ -636,7 +707,7 @@ const AcademicSetup = () => {
           { key: 'offerings', label: 'Course lecturers', icon: UserCheck },
         ]}
       />
-      {tab === 'semesters' ? <SemesterPanel /> : null}
+      {tab === 'semesters' ? <SemesterPanel canEditDeadline={isSystemAdmin} /> : null}
       {tab === 'departments' ? <DepartmentPanel /> : null}
       {tab === 'offerings' ? <CourseOfferingPanel /> : null}
     </div>

@@ -23,6 +23,8 @@ export const academicsApi = {
   semesters: () => toData(api.get('/semesters/')),
   // Only administrators may activate; the backend rejects everyone else.
   activateSemester: (semesterId) => toData(api.post(`/semesters/${semesterId}/activate/`)),
+  // System admin: registration cut-off (YYYY-MM-DD or null).
+  updateSemester: (semesterId, data) => toData(api.patch(`/semesters/${semesterId}/`, data)),
 
   // Counts for the admin dashboard. The backend wraps this in { data: ... }.
   adminStats: () => toData(api.get('/admin/stats/')),

@@ -86,7 +86,7 @@ const RegistrationPage = () => {
         area="classrooms"
         icon={BookPlus}
         title="Course registration"
-        subtitle="Pick the courses for this semester. Only offerings matching your department, level, and the active semester are listed."
+        subtitle="Pick courses for this semester. Offerings for your department and level are listed, plus lower-level courses you are eligible to take."
         actions={(
           <button type="button" onClick={() => navigate('/lessons')} className="fet-btn-secondary">
             My courses
@@ -119,7 +119,12 @@ const RegistrationPage = () => {
             <Pill tone="mute">{data.department}</Pill>
           </CardHead>
           <CardBody>
-            {data.registration_deadline ? (
+            {data.registration_closed ? (
+              <Callout tone="warn" className="mb-4">
+                Registration is closed for this semester. Courses with a later
+                per-course deadline are still marked open below.
+              </Callout>
+            ) : data.registration_deadline ? (
               <div className="flex items-center gap-2 text-[12.5px] text-text-secondary mb-4">
                 <CalendarClock size={14} />
                 Registration closes {formatDate(data.registration_deadline)}
@@ -156,15 +161,17 @@ const RegistrationPage = () => {
               <ul className="space-y-2">
                 {visibleEligible.map((c) => {
                   const on = selected.includes(c.offering_id);
+                  const closed = Boolean(c.registration_closed);
                   return (
                     <li key={c.offering_id}>
                       <label
-                        className="ui-li flex items-center gap-3 cursor-pointer"
+                        className={`ui-li flex items-center gap-3 ${closed ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                         style={on ? { borderColor: 'rgb(var(--primary))' } : undefined}
                       >
                         <input
                           type="checkbox"
                           checked={on}
+                          disabled={closed}
                           onChange={() => toggle(c.offering_id)}
                           className="w-4 h-4 accent-[rgb(var(--primary))]"
                         />
@@ -174,9 +181,17 @@ const RegistrationPage = () => {
                           </p>
                           <p className="text-[12px] text-text-tertiary mt-0.5">
                             {c.credit_units} units • {c.lecturer_name || 'TBA'}
+                            {c.course_level ? ` • Level ${c.course_level}` : ''}
+                            {c.registration_deadline
+                              ? ` • Closes ${formatDate(c.registration_deadline)}`
+                              : ''}
                           </p>
                         </div>
-                        {on ? <Pill tone="in" icon={Check}>Selected</Pill> : null}
+                        {closed ? (
+                          <Pill tone="mute">Closed</Pill>
+                        ) : on ? (
+                          <Pill tone="in" icon={Check}>Selected</Pill>
+                        ) : null}
                       </label>
                     </li>
                   );
