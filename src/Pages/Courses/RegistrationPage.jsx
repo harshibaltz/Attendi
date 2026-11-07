@@ -70,10 +70,18 @@ const RegistrationPage = () => {
   const eligible = courses.filter((c) => !c.is_enrolled);
   const done = courses.filter((c) => c.is_enrolled);
   const term = query.trim().toLowerCase();
-  const levels = useMemo(() => (
-    [...new Set(courses.map((c) => c.course_level).filter(Boolean))]
-      .sort((a, b) => (Number(b) || 0) - (Number(a) || 0) || String(a).localeCompare(String(b)))
-  ), [courses]);
+  // Always offer every level at or below the student's own level, even when
+  // there are no matching offerings yet, so the dropdown is predictable.
+  const levels = useMemo(() => {
+    const own = Number(data?.level);
+    const generated = Number.isFinite(own) && own >= 100
+      ? Array.from({ length: Math.floor(own / 100) }, (_, i) => String((Math.floor(own / 100) - i) * 100))
+      : [];
+    const present = courses.map((c) => c.course_level).filter(Boolean);
+    return [...new Set([...generated, ...present])]
+      .filter((level) => !Number.isFinite(own) || Number(level) <= own)
+      .sort((a, b) => (Number(b) || 0) - (Number(a) || 0) || String(a).localeCompare(String(b)));
+  }, [courses, data?.level]);
   const matchesLevel = (c) => levelFilter === 'ALL' || c.course_level === levelFilter;
   const visibleEligible = eligible.filter((c) => (
     matchesLevel(c)
@@ -220,7 +228,9 @@ const RegistrationPage = () => {
 
                 {(term || levelFilter !== 'ALL') && visibleEligible.length === 0 ? (
                   <li className="py-4 text-center text-[13px] text-text-secondary">
-                    No course matches those filters.
+                    {levelFilter !== 'ALL' && !term
+                      ? `No level ${levelFilter} courses are available to your department this semester.`
+                      : 'No course matches those filters.'}
                   </li>
                 ) : null}
 
