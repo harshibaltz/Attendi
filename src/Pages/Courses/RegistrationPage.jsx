@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { BookPlus, CalendarClock, Check, Info, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { SectionHeader, Card, CardBody, CardHead, CardFoot, Pill, Callout, EmptyState, Eyebrow } from '../../components/UI';
@@ -15,6 +15,7 @@ const RegistrationPage = () => {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [query, setQuery] = useState('');
+  const [levelFilter, setLevelFilter] = useState('ALL');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -69,12 +70,19 @@ const RegistrationPage = () => {
   const eligible = courses.filter((c) => !c.is_enrolled);
   const done = courses.filter((c) => c.is_enrolled);
   const term = query.trim().toLowerCase();
-  const visibleEligible = term
-    ? eligible.filter((c) => (
+  const levels = useMemo(() => (
+    [...new Set(courses.map((c) => c.course_level).filter(Boolean))]
+      .sort((a, b) => (Number(b) || 0) - (Number(a) || 0) || String(a).localeCompare(String(b)))
+  ), [courses]);
+  const matchesLevel = (c) => levelFilter === 'ALL' || c.course_level === levelFilter;
+  const visibleEligible = eligible.filter((c) => (
+    matchesLevel(c)
+    && (!term || (
       (c.course_code || '').toLowerCase().includes(term)
       || (c.course_title || '').toLowerCase().includes(term)
     ))
-    : eligible;
+  ));
+  const visibleDone = done.filter(matchesLevel);
   const totalUnits = courses.reduce((sum, c) => sum + (c.credit_units || 0), 0);
   const pickedUnits = courses
     .filter((c) => selected.includes(c.offering_id))
@@ -136,16 +144,29 @@ const RegistrationPage = () => {
             )}
 
             {eligible.length > 0 ? (
-              <div className="relative mb-4 sm:max-w-[340px]">
-                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-                <input
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search course code or title"
-                  aria-label="Search available courses"
-                  className="fet-input pl-9"
-                />
+              <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                <div className="relative flex-1 sm:max-w-[340px]">
+                  <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                  <input
+                    type="text"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search course code or title"
+                    aria-label="Search available courses"
+                    className="fet-input pl-9"
+                  />
+                </div>
+                <select
+                  value={levelFilter}
+                  onChange={(e) => setLevelFilter(e.target.value)}
+                  className="fet-select sm:w-44"
+                  aria-label="Filter by course level"
+                >
+                  <option value="ALL">All levels</option>
+                  {levels.map((level) => (
+                    <option key={level} value={level}>Level {level}</option>
+                  ))}
+                </select>
               </div>
             ) : null}
 
@@ -197,17 +218,17 @@ const RegistrationPage = () => {
                   );
                 })}
 
-                {term && visibleEligible.length === 0 ? (
+                {(term || levelFilter !== 'ALL') && visibleEligible.length === 0 ? (
                   <li className="py-4 text-center text-[13px] text-text-secondary">
-                    No course matches that search.
+                    No course matches those filters.
                   </li>
                 ) : null}
 
-                {done.length > 0 ? (
+                {visibleDone.length > 0 ? (
                   <li className="pt-3 mt-3 border-t border-border-default">
                     <Eyebrow>Already registered</Eyebrow>
                     <ul className="space-y-1.5">
-                      {done.map((c) => (
+                      {visibleDone.map((c) => (
                         <li key={c.offering_id} className="flex items-center gap-2 text-[13px] text-text-secondary">
                           <Pill tone="ok" icon={Check}>Registered</Pill>
                           <span className="num">{c.course_code}</span> {c.course_title}
