@@ -7,6 +7,7 @@ from django.db import transaction
 from django.db import models as db_models
 from django.shortcuts import get_object_or_404
 from django.utils import timezone as tz
+from django.utils.dateparse import parse_date
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -34,7 +35,12 @@ from .models import (
     Enrollment,
     Faculty,
 )
-from .services import enroll_cohort
+from .services import (
+    allowed_course_levels,
+    effective_registration_deadline,
+    enroll_cohort,
+    registration_is_closed,
+)
 from .serializers import (
     SemesterSerializer,
     ClassDefinitionSerializer,
@@ -128,6 +134,44 @@ class SemesterListView(APIView):
 
     def get(self, request):
         return Response(SemesterSerializer(Semester.objects.all(), many=True).data)
+
+
+class SemesterDetailView(APIView):
+    """PATCH /api/v1/semesters/{id}/ - set the registration cut-off (system admin).
+
+    Semesters are institution-wide, so only a SYSTEM_ADMIN may change these
+    dates; faculty/department admins set per-course deadlines on the offering.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    EDITABLE = {"registration_deadline", "start_date", "end_date"}
+
+    def patch(self, request, semester_id):
+        if request.user.role != User.Role.SYSTEM_ADMIN:
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        semester = get_object_or_404(Semester, id=semester_id)
+        data = {key: value for key, value in request.data.items() if key in self.EDITABLE}
+        if not data:
+            return Response(
+                {"success": False, "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "Send at least one of: registration_deadline, start_date, end_date.",
+                }},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer = SemesterSerializer(semester, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        audit(
+            user=request.user,
+            action="SEMESTER_UPDATED",
+            resource_type="Semester",
+            resource_id=semester.id,
+            request=request,
+            metadata={key: str(value) for key, value in data.items()},
+        )
+        return Response(serializer.data)
 
 
 class SemesterActivateView(APIView):
@@ -365,12 +409,12 @@ class CourseOfferingDetailView(APIView):
                 {"success": False, "error": {"code": "FORBIDDEN", "message": "Only administrators can manage course offerings."}},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        editable = {"lecturer", "co_lecturer", "departments"}
+        editable = {"lecturer", "co_lecturer", "departments", "registration_deadline"}
         if not editable.intersection(request.data):
             return Response(
                 {"success": False, "error": {
                     "code": "VALIDATION_ERROR",
-                    "message": "Send at least one of: lecturer, co_lecturer, departments.",
+                    "message": "Send at least one of: lecturer, co_lecturer, departments, registration_deadline.",
                 }},
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -422,6 +466,23 @@ class CourseOfferingDetailView(APIView):
                 return Response({"error": "Shared departments must belong to the course faculty."}, status=status.HTTP_400_BAD_REQUEST)
             department_ids = [d.id for d in departments]
 
+        deadline_sent = "registration_deadline" in request.data
+        deadline = None
+        if deadline_sent:
+            raw_deadline = request.data.get("registration_deadline")
+            if raw_deadline in (None, ""):
+                deadline = None
+            else:
+                deadline = parse_date(str(raw_deadline))
+                if deadline is None:
+                    return Response(
+                        {"success": False, "error": {
+                            "code": "VALIDATION_ERROR",
+                            "message": "registration_deadline must be a date (YYYY-MM-DD) or null.",
+                        }},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
         final_lecturer_id = (lecturer.id if lecturer else None) if lecturer_sent else offering.lecturer_id
         final_co_id = (co_lecturer.id if co_lecturer else None) if co_sent else offering.co_lecturer_id
         if final_lecturer_id and final_co_id and final_lecturer_id == final_co_id:
@@ -437,12 +498,18 @@ class CourseOfferingDetailView(APIView):
         with transaction.atomic():
             offering = CourseOffering.objects.select_for_update().get(id=offering_id)
             previous_lecturer_id = offering.lecturer_id
+            update_fields = []
             if lecturer_sent:
                 offering.lecturer = lecturer
+                update_fields.append("lecturer")
             if co_sent:
                 offering.co_lecturer = co_lecturer
-            if lecturer_sent or co_sent:
-                offering.save(update_fields=["lecturer", "co_lecturer", "updated_at"])
+                update_fields.append("co_lecturer")
+            if deadline_sent:
+                offering.registration_deadline = deadline
+                update_fields.append("registration_deadline")
+            if update_fields:
+                offering.save(update_fields=[*update_fields, "updated_at"])
             if lecturer_sent and lecturer is not None and not Enrollment.objects.filter(course_offering=offering).exists():
                 enroll_cohort(offering)
             if department_ids is not None:
@@ -702,7 +769,6 @@ class StudentRegistrationView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
         profile = getattr(request.user, "student_profile", None)
-        profile = getattr(request.user, "student_profile", None)
         if not profile or not profile.department or not profile.level:
             return Response(
                 {"success": False, "error": {"code": "INCOMPLETE_PROFILE", "message": "Your profile is missing department or level information."}},
@@ -719,7 +785,7 @@ class StudentRegistrationView(APIView):
             | db_models.Q(departments=profile.department),
             semester=active_semester,
             status="ACTIVE",
-            course__level=profile.level,
+            course__level__in=allowed_course_levels(profile.level),
         ).select_related("course", "department", "semester", "lecturer", "co_lecturer").distinct()
 
         already_enrolled = set(
@@ -729,19 +795,29 @@ class StudentRegistrationView(APIView):
                 status=Enrollment.Status.ACTIVE,
             ).values_list("course_offering_id", flat=True)
         )
+        today = tz.localdate()
         result = []
         for off in available:
+            deadline = effective_registration_deadline(off)
             result.append({
                 "offering_id": str(off.id),
                 "course_code": off.course.code,
                 "course_title": off.course.title,
                 "credit_units": off.course.credit_units,
+                "course_level": off.course.level,
                 "lecturer_name": off.lecturer.get_full_name() if off.lecturer else "TBA",
                 "is_enrolled": off.id in already_enrolled,
+                "registration_deadline": deadline,
+                "registration_closed": registration_is_closed(off, today),
             })
+        semester_closed = (
+            active_semester.registration_deadline is not None
+            and today > active_semester.registration_deadline
+        )
         return Response({
             "semester": active_semester.name,
             "registration_deadline": active_semester.registration_deadline,
+            "registration_closed": semester_closed,
             "level": profile.level,
             "department": profile.department.name,
             "courses": result,
@@ -776,15 +852,16 @@ class StudentRegistrationView(APIView):
                 {"success": False, "error": {"code": "VALIDATION_ERROR", "message": "No courses selected."}},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        available = set(
-            CourseOffering.objects.filter(
+        available = {
+            offering.id: offering
+            for offering in CourseOffering.objects.filter(
                 db_models.Q(department=profile.department)
                 | db_models.Q(departments=profile.department),
                 semester=active_semester,
                 status="ACTIVE",
-                course__level=profile.level,
-            ).values_list("id", flat=True)
-        )
+                course__level__in=allowed_course_levels(profile.level),
+            ).select_related("semester", "course")
+        }
         created = []
         errors = []
         # One transaction for the batch: each course either fully registers
@@ -799,6 +876,9 @@ class StudentRegistrationView(APIView):
                     continue
                 if off_id not in available:
                     errors.append({"offering_id": str(oid), "error": "Course not available for your department/level"})
+                    continue
+                if registration_is_closed(available[off_id]):
+                    errors.append({"offering_id": str(oid), "error": "Registration is closed for this course"})
                     continue
                 enrollment, was_created = Enrollment.objects.select_for_update().get_or_create(
                     student=request.user,
@@ -815,7 +895,7 @@ class StudentRegistrationView(APIView):
                     created.append(str(off_id))
                     from apps.projects.services import sync_student_memberships_for_offering
 
-                    sync_student_memberships_for_offering(request.user, CourseOffering.objects.get(id=off_id))
+                    sync_student_memberships_for_offering(request.user, available[off_id])
         return Response({
             "success": True,
             "registered_count": len(created),

@@ -121,6 +121,8 @@ class CourseOffering(TimeStampedUUIDModel):
         help_text="Additional departments allowed to register for this offering.",
     )
     status = models.CharField(max_length=20, default="ACTIVE")
+    # Optional per-offering cut-off; overrides the semester-wide deadline.
+    registration_deadline = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

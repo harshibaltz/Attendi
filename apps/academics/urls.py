@@ -11,6 +11,7 @@ urlpatterns = [
     path("departments/create/", views.DepartmentCreateView.as_view(), name="department-create"),
     path("departments/<uuid:department_id>/", views.DepartmentDetailView.as_view(), name="department-detail"),
     path("semesters/", views.SemesterListView.as_view(), name="semester-list"),
+    path("semesters/<uuid:semester_id>/", views.SemesterDetailView.as_view(), name="semester-detail"),
     path("semesters/<uuid:semester_id>/activate/", views.SemesterActivateView.as_view(), name="semester-activate"),
     path("admin/stats/", views.AdminStatsView.as_view(), name="admin-stats"),
     path("courses/", views.CourseListView.as_view(), name="course-list"),

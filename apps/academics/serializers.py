@@ -62,6 +62,7 @@ class CourseOfferingSerializer(serializers.ModelSerializer):
             "id", "course", "course_code", "course_title", "semester", "semester_name",
             "department", "department_name", "departments", "department_names",
             "lecturer", "lecturer_name", "co_lecturer", "co_lecturer_name", "status",
+            "registration_deadline",
         ]
 
     def get_lecturer_name(self, obj):
