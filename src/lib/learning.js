@@ -22,8 +22,11 @@ export const learningApi = {
         course_title: c.course_title,
         semester: c.semester_name,
         lecturer_name: c.lecturer_name || 'Staff',
-        materials_count: 0,
-        announcements_count: 0,
+        materials_count: c.materials_count ?? 0,
+        announcements_count: c.announcements_count ?? 0,
+        assignments_count: c.assignments_count ?? 0,
+        assessments_count: c.assessments_count ?? 0,
+        enrolled_students: c.enrolled_students ?? 0,
       }));
     }
     return toData(api.get('/students/me/courses/'));
@@ -31,6 +34,8 @@ export const learningApi = {
   // All offerings (admin browse).
   getAllCourses: () => toData(api.get('/course-offerings/')),
   getCourse: (offeringId) => toData(api.get(`/course-offerings/${offeringId}/`)),
+  // Enrolled students for the class list (lecturers/admins).
+  getEnrollments: (offeringId) => toData(api.get(`/course-offerings/${offeringId}/enrollments/`)),
   // Materials for a course offering
   getMaterials: (offeringId) => toData(api.get(`/course-offerings/${offeringId}/materials/`)),
   createMaterial: (data) => toData(api.post(`/course-offerings/${data.course_offering}/materials/`, data)),

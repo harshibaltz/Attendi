@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Users as UsersIcon, Search, UserCheck, UserX, Eye, X, Download } from 'lucide-react';
+import { Users as UsersIcon, Search, UserCheck, UserX, Eye, X, Download, Trash2 } from 'lucide-react';
 import { SectionHeader, Card, CardBody, CardHead, Callout, DataTable, EmptyState, Pill } from '../../components/UI';
 import { usersApi } from '../../lib/users';
 import { errorMessage } from '../../lib/enrollment';
@@ -36,6 +36,7 @@ const Users = ({ user: currentUser }) => {
   const [stateFilter, setStateFilter] = useState('ALL');
   const [selectedDeleted, setSelectedDeleted] = useState(null);
   const [downloading, setDownloading] = useState(false);
+  const canDelete = String(currentUser?.role || '').toUpperCase() === 'SYSTEM_ADMIN';
 
   const download = async () => {
     setDownloading(true);
@@ -91,8 +92,10 @@ const Users = ({ user: currentUser }) => {
   }, [rows, query, roleFilter, stateFilter]);
 
   const changeStatus = async (row, status) => {
-    if (status !== 'ACTIVE') {
-      const name = row.full_name || row.email;
+    const name = row.full_name || row.email;
+    if (row.deleted_at && status === 'ACTIVE') {
+      if (!window.confirm(`Restore ${name}? Their original email and matricule will be reclaimed if available. Their course enrolments and attendance history were permanently deleted and cannot be restored.`)) return;
+    } else if (status !== 'ACTIVE') {
       if (!window.confirm(`Deactivate ${name}? Their sessions are revoked and they cannot sign in until you restore the account. Grades, attendance and submissions are preserved.`)) return;
     }
     setBusyId(row.id);
@@ -100,10 +103,34 @@ const Users = ({ user: currentUser }) => {
     try {
       await usersApi.setStatus(row.id, status);
       setRows((list) => list.map((u) => (u.id === row.id
-        ? { ...u, status, is_active: status === 'ACTIVE' }
+        ? {
+            ...u,
+            status,
+            is_active: status === 'ACTIVE',
+            ...(row.deleted_at && status === 'ACTIVE'
+              ? { deleted_at: null, email: u.deleted_from_email || u.email }
+              : {}),
+          }
         : u)));
     } catch (err) {
       setError(errorMessage(err, 'Could not update this account.'));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const deleteAccount = async (row) => {
+    const name = row.full_name || row.email;
+    if (!window.confirm(
+      `Permanently delete ${name}? Their course enrolments, attendance history and points will be deleted. The account is archived and their email/matricule are freed for a new registration. This cannot be undone.`,
+    )) return;
+    setBusyId(row.id);
+    setError('');
+    try {
+      const updated = await usersApi.deleteUser(row.id);
+      setRows((list) => list.map((u) => (u.id === row.id ? updated : u)));
+    } catch (err) {
+      setError(errorMessage(err, 'Could not delete this account.'));
     } finally {
       setBusyId(null);
     }
@@ -115,7 +142,7 @@ const Users = ({ user: currentUser }) => {
         area="hub"
         icon={UsersIcon}
         title="Users"
-        subtitle="Every account on the platform. Self-deleted accounts stay here with their original identifiers, feedback and academic records."
+        subtitle="Every account on the platform. Self-deleted accounts stay here with their original identifiers and feedback; their courses and attendance history are permanently removed."
         actions={(
           <>
             <button
@@ -183,9 +210,10 @@ const Users = ({ user: currentUser }) => {
 
       <Callout tone="wn">
         Deactivating blocks sign-in immediately and revokes the account&apos;s sessions;
-        you can restore that account later. A self-deleted account cannot be restored
-        because its email and matricule were released for re-registration — use
-        <strong> View data </strong> to see its archived details and feedback.
+        you can restore that account later. System administrators can also permanently
+        delete an account, which removes its courses, attendance history and points.
+        Self-deleted accounts can be restored, but only if their original email and
+        matricule are still free — that deleted activity cannot be recovered.
       </Callout>
 
       <Card accent="hub">
@@ -241,44 +269,66 @@ const Users = ({ user: currentUser }) => {
                   key: 'actions',
                   label: '',
                   align: 'right',
-                  width: '130px',
+                  width: '210px',
                   render: (row) => {
                     if (row.deleted_at) {
                       return (
-                        <button
-                          type="button"
-                          onClick={() => setSelectedDeleted(row)}
-                          className="fet-btn-secondary text-[12px]"
-                        >
-                          <Eye size={13} /> View data
-                        </button>
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedDeleted(row)}
+                            className="fet-btn-secondary text-[12px]"
+                          >
+                            <Eye size={13} /> View data
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => changeStatus(row, 'ACTIVE')}
+                            disabled={busyId === row.id}
+                            className="fet-btn-primary text-[12px]"
+                          >
+                            <UserCheck size={13} /> {busyId === row.id ? 'Working...' : 'Restore'}
+                          </button>
+                        </div>
                       );
                     }
                     const isSelf = row.id === currentUser?.id;
-                    if (row.status === 'ACTIVE') {
-                      return (
-                        <button
-                          type="button"
-                          onClick={() => changeStatus(row, 'SUSPENDED')}
-                          disabled={isSelf || busyId === row.id}
-                          title={isSelf ? 'You cannot deactivate your own account.' : undefined}
-                          className="fet-btn-secondary text-[12px]"
-                        >
-                          <UserX size={13} /> {busyId === row.id ? 'Working...' : 'Deactivate'}
-                        </button>
-                      );
-                    }
                     return (
-                      <button
-                        type="button"
-                        onClick={() => changeStatus(row, 'ACTIVE')}
-                        disabled={busyId === row.id}
-                        className="fet-btn-primary text-[12px]"
-                      >
-                        <UserCheck size={13} /> {busyId === row.id
-                          ? 'Working...'
-                          : (row.status === 'ARCHIVED' ? 'Restore' : 'Activate')}
-                      </button>
+                      <div className="flex justify-end gap-2">
+                        {row.status === 'ACTIVE' ? (
+                          <button
+                            type="button"
+                            onClick={() => changeStatus(row, 'SUSPENDED')}
+                            disabled={isSelf || busyId === row.id}
+                            title={isSelf ? 'You cannot deactivate your own account.' : undefined}
+                            className="fet-btn-secondary text-[12px]"
+                          >
+                            <UserX size={13} /> {busyId === row.id ? 'Working...' : 'Deactivate'}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => changeStatus(row, 'ACTIVE')}
+                            disabled={busyId === row.id}
+                            className="fet-btn-primary text-[12px]"
+                          >
+                            <UserCheck size={13} /> {busyId === row.id
+                              ? 'Working...'
+                              : (row.status === 'ARCHIVED' ? 'Restore' : 'Activate')}
+                          </button>
+                        )}
+                        {canDelete && !isSelf ? (
+                          <button
+                            type="button"
+                            onClick={() => deleteAccount(row)}
+                            disabled={busyId === row.id}
+                            title="Permanently delete this account"
+                            className="fet-btn-danger text-[12px]"
+                          >
+                            <Trash2 size={13} /> Delete
+                          </button>
+                        ) : null}
+                      </div>
                     );
                   },
                 },
@@ -304,7 +354,8 @@ const Users = ({ user: currentUser }) => {
                 <h4 className="text-[15px] font-bold text-text-primary">Deleted account data</h4>
                 <p className="mt-1 text-[12px] text-text-secondary">
                   Archived for administrators. The person can register again with the original
-                  email and matricule, but this login cannot be restored.
+                  email and matricule, or you can restore this login if those identifiers are
+                  still free. Courses and attendance history cannot be recovered.
                 </p>
               </div>
               <button

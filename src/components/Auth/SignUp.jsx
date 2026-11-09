@@ -10,7 +10,7 @@ const normalizeFullName = (value) => {
 
   const parts = trimmed.split(/\s+/);
   if (parts.length === 1) {
-    return { first_name: parts[0], last_name: 'User' };
+    return { first_name: parts[0], last_name: '' };
   }
 
   return {
@@ -18,6 +18,10 @@ const normalizeFullName = (value) => {
     last_name: parts.slice(1).join(' '),
   };
 };
+
+// Bumped when a department is removed, so an old cached list cannot keep
+// offering it during a brief API outage.
+const DEPARTMENTS_CACHE_KEY = 'fet_departments_v2';
 
 const GENERIC_ERRORS = new Set([
   'the request could not be completed.',
@@ -91,7 +95,7 @@ const SignUp = ({ onSignUp, onSwitchToLogin }) => {
         : [];
       if (valid.length > 0) {
         setDepartments(valid);
-        localStorage.setItem('fet_departments', JSON.stringify(valid));
+        localStorage.setItem(DEPARTMENTS_CACHE_KEY, JSON.stringify(valid));
         setLoadingDepartments(false);
         return;
       }
@@ -103,7 +107,7 @@ const SignUp = ({ onSignUp, onSwitchToLogin }) => {
     // A previously cached real list can bridge a brief outage.
     let cached = [];
     try {
-      cached = JSON.parse(localStorage.getItem('fet_departments') || '[]');
+      cached = JSON.parse(localStorage.getItem(DEPARTMENTS_CACHE_KEY) || '[]');
     } catch {
       cached = [];
     }

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Edit2, Save, X, Mail, Building, GraduationCap, User as UserIcon, Award, Briefcase,
-  ArrowRight, AlertCircle, RefreshCw, Trash2,
+  ArrowRight, AlertCircle, RefreshCw, Trash2, Pencil,
 } from 'lucide-react';
 import { profileApi, normalizeRole } from '../../lib/profile';
 import { projectsApi } from '../../lib/projects';
@@ -23,6 +23,18 @@ const roleLabel = (role) => {
 };
 
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString() : '—');
+
+const apiErrorMessage = (err, fallback) => {
+  const apiError = err.response?.data?.error;
+  const details = apiError?.details;
+  if (typeof details === 'string') return details || fallback;
+  if (details && typeof details === 'object') {
+    const first = Object.values(details)[0];
+    const detail = Array.isArray(first) ? first[0] : first;
+    if (typeof detail === 'string' && detail.trim()) return detail;
+  }
+  return apiError?.message || fallback;
+};
 
 const DELETE_REASONS = [
   { value: 'NO_LONGER_NEEDED', label: 'I no longer need the account' },
@@ -45,6 +57,12 @@ const ProfilePage = () => {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState('');
   const [form, setForm] = useState({});
+  const [nameEdit, setNameEdit] = useState(false);
+  const [nameSaving, setNameSaving] = useState(false);
+  const [nameForm, setNameForm] = useState({ first_name: '', last_name: '' });
+  const [academicEdit, setAcademicEdit] = useState(false);
+  const [academicSaving, setAcademicSaving] = useState(false);
+  const [academicForm, setAcademicForm] = useState({ student_number: '', level: '' });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteDone, setDeleteDone] = useState(false);
@@ -112,7 +130,96 @@ const ProfilePage = () => {
       skills: (sp.skills || []).join(', '),
       achievements: (sp.achievements || []).join(', '),
     });
+    setNameEdit(false);
+    setAcademicEdit(false);
+    setError('');
     setIsEditing(true);
+  };
+
+  const startNameEdit = () => {
+    setNameForm({
+      first_name: me?.first_name || '',
+      last_name: me?.last_name || '',
+    });
+    setAcademicEdit(false);
+    setError('');
+    setSuccess('');
+    setNameEdit(true);
+  };
+
+  const cancelNameEdit = () => {
+    setNameEdit(false);
+    setError('');
+  };
+
+  const handleNameSave = async () => {
+    const firstName = nameForm.first_name.trim();
+    const lastName = nameForm.last_name.trim();
+    if (!firstName && !lastName) {
+      setError('Enter at least a first or last name.');
+      return;
+    }
+    setNameSaving(true);
+    setError('');
+    try {
+      await profileApi.updateMe({ first_name: firstName, last_name: lastName });
+      const updated = await profileApi.me();
+      setMe(updated);
+      localStorage.setItem('fet_user', JSON.stringify(updated));
+      localStorage.setItem('fet_user_role', updated.role || '');
+      localStorage.setItem('fet_user_name', updated.full_name || updated.email?.split('@')[0] || 'User');
+      window.dispatchEvent(new CustomEvent('fet-profile-updated'));
+      setNameEdit(false);
+      setSuccess('Name updated successfully!');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Could not save your name.'));
+    } finally {
+      setNameSaving(false);
+    }
+  };
+
+  const startAcademicEdit = () => {
+    const sp = me?.student_profile || {};
+    setAcademicForm({
+      student_number: sp.student_number || '',
+      level: sp.level || '400',
+    });
+    setNameEdit(false);
+    setError('');
+    setSuccess('');
+    setAcademicEdit(true);
+  };
+
+  const cancelAcademicEdit = () => {
+    setAcademicEdit(false);
+    setError('');
+  };
+
+  const handleAcademicSave = async () => {
+    const studentNumber = academicForm.student_number.trim();
+    if (!studentNumber) {
+      setError('Matricule number is required.');
+      return;
+    }
+    setAcademicSaving(true);
+    setError('');
+    try {
+      await profileApi.updateMe({ student_number: studentNumber, level: academicForm.level });
+      const updated = await profileApi.me();
+      setMe(updated);
+      localStorage.setItem('fet_user', JSON.stringify(updated));
+      localStorage.setItem('fet_user_role', updated.role || '');
+      localStorage.setItem('fet_user_name', updated.full_name || updated.email?.split('@')[0] || 'User');
+      window.dispatchEvent(new CustomEvent('fet-profile-updated'));
+      setAcademicEdit(false);
+      setSuccess('Academic details updated successfully!');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Could not save your academic details.'));
+    } finally {
+      setAcademicSaving(false);
+    }
   };
 
   const handleSave = async () => {
@@ -148,16 +255,7 @@ const ProfilePage = () => {
       window.dispatchEvent(new CustomEvent('fet-profile-updated'));
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
-      const apiError = err.response?.data?.error;
-      const details = apiError?.details;
-      let detail = '';
-      if (typeof details === 'string') {
-        detail = details;
-      } else if (details && typeof details === 'object') {
-        const first = Object.values(details)[0];
-        detail = Array.isArray(first) ? first[0] : (typeof first === 'string' ? first : '');
-      }
-      setError(detail || apiError?.message || 'Could not save your profile.');
+      setError(apiErrorMessage(err, 'Could not save your profile.'));
     } finally {
       setSaving(false);
     }
@@ -287,8 +385,36 @@ const ProfilePage = () => {
                   <input type="text" value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} className="fet-input" placeholder="First" />
                   <input type="text" value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} className="fet-input" placeholder="Last" />
                 </div>
+              ) : nameEdit ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    value={nameForm.first_name}
+                    onChange={(e) => setNameForm({ ...nameForm, first_name: e.target.value })}
+                    className="fet-input"
+                    placeholder="First"
+                    autoComplete="given-name"
+                  />
+                  <input
+                    type="text"
+                    value={nameForm.last_name}
+                    onChange={(e) => setNameForm({ ...nameForm, last_name: e.target.value })}
+                    className="fet-input"
+                    placeholder="Last"
+                    autoComplete="family-name"
+                  />
+                </div>
               ) : (
-                <p>{me.full_name || '-'}</p>
+                <div className="flex items-center gap-2">
+                  <p>{me.full_name || '-'}</p>
+                  <button
+                    type="button"
+                    onClick={startNameEdit}
+                    className="inline-flex items-center gap-1 text-[12px] font-medium text-primary hover:underline"
+                  >
+                    <Pencil size={12} /> Edit
+                  </button>
+                </div>
               )}
             </Field>
 
@@ -305,8 +431,28 @@ const ProfilePage = () => {
                   autoComplete="off"
                   required
                 />
+              ) : academicEdit && isStudent ? (
+                <input
+                  type="text"
+                  value={academicForm.student_number}
+                  onChange={(e) => setAcademicForm({ ...academicForm, student_number: e.target.value })}
+                  className="fet-input"
+                  autoComplete="off"
+                  required
+                />
               ) : (
-                <p>{isStudent ? (sp.student_number || '-') : (lp.staff_number || '-')}</p>
+                <div className="flex items-center gap-2">
+                  <p>{isStudent ? (sp.student_number || '-') : (lp.staff_number || '-')}</p>
+                  {isStudent && (
+                    <button
+                      type="button"
+                      onClick={startAcademicEdit}
+                      className="inline-flex items-center gap-1 text-[12px] font-medium text-primary hover:underline"
+                    >
+                      <Pencil size={12} /> Edit
+                    </button>
+                  )}
+                </div>
               )}
             </Field>
 
@@ -348,8 +494,25 @@ const ProfilePage = () => {
                   <select value={form.level} onChange={(e) => setForm({ ...form, level: e.target.value })} className="fet-select">
                     {['200', '300', '400', '500'].map((l) => <option key={l} value={l}>Level {l}</option>)}
                   </select>
+                ) : academicEdit ? (
+                  <select
+                    value={academicForm.level}
+                    onChange={(e) => setAcademicForm({ ...academicForm, level: e.target.value })}
+                    className="fet-select"
+                  >
+                    {['200', '300', '400', '500'].map((l) => <option key={l} value={l}>Level {l}</option>)}
+                  </select>
                 ) : (
-                  <p className="flex items-center gap-1.5"><GraduationCap size={14} className="text-text-secondary" />Level {sp.level || '-'}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="flex items-center gap-1.5"><GraduationCap size={14} className="text-text-secondary" />Level {sp.level || '-'}</p>
+                    <button
+                      type="button"
+                      onClick={startAcademicEdit}
+                      className="inline-flex items-center gap-1 text-[12px] font-medium text-primary hover:underline"
+                    >
+                      <Pencil size={12} /> Edit
+                    </button>
+                  </div>
                 )}
               </Field>
             )}
@@ -412,6 +575,50 @@ const ProfilePage = () => {
                 <Save size={18} />
                 {saving ? 'Saving...' : 'Save Changes'}
               </button>
+            </div>
+          )}
+
+          {nameEdit && !isEditing && (
+            <div className="mt-6 pt-6 border-t border-border-default flex flex-col gap-3">
+              <p className="text-[12px] text-text-secondary">
+                Update the first and last name shown across the platform.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={cancelNameEdit} className="fet-btn-secondary">
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNameSave}
+                  disabled={nameSaving || (!nameForm.first_name.trim() && !nameForm.last_name.trim())}
+                  className="fet-btn-primary flex items-center gap-2"
+                >
+                  <Save size={18} />
+                  {nameSaving ? 'Saving...' : 'Save name'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {academicEdit && !isEditing && (
+            <div className="mt-6 pt-6 border-t border-border-default flex flex-col gap-3">
+              <p className="text-[12px] text-text-secondary">
+                Update your matricule and level. These are used on attendance registers and course rosters.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={cancelAcademicEdit} className="fet-btn-secondary">
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAcademicSave}
+                  disabled={academicSaving || !academicForm.student_number.trim()}
+                  className="fet-btn-primary flex items-center gap-2"
+                >
+                  <Save size={18} />
+                  {academicSaving ? 'Saving...' : 'Save academic details'}
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -573,9 +780,9 @@ const ProfilePage = () => {
       <div className="fet-card p-4 md:p-6" style={{ borderColor: 'rgb(var(--bd-line))' }}>
         <h4 className="text-[15px] font-bold text-danger">Danger zone</h4>
         <p className="mt-1 text-[13px] text-text-secondary">
-          Deleting your account signs you out on every device and releases your email and
-          matricule so you can register again. Your academic records stay with the school and
-          remain visible to administrators only.
+          Deleting your account signs you out on every device, releases your email and
+          matricule so you can register again, and permanently removes your course
+          enrolments and attendance history. This cannot be undone.
         </p>
         <button
           type="button"
@@ -611,8 +818,8 @@ const ProfilePage = () => {
                   you are ready.
                 </p>
                 <p className="mt-3 text-[13px] text-text-secondary">
-                  Your academic records stay with the school and are visible to administrators
-                  only. Thank you for your feedback — it helps us improve.
+                  Your course enrolments and attendance history have been permanently removed.
+                  Thank you for your feedback — it helps us improve.
                 </p>
               </div>
             ) : (
@@ -621,7 +828,7 @@ const ProfilePage = () => {
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-[12px] text-text-secondary">
                   <li>You will be signed out on every device.</li>
                   <li>Your email and matricule will be released for a new registration.</li>
-                  <li>Your academic records stay with the school and are visible to administrators only.</li>
+                  <li>Your course enrolments and attendance history will be permanently deleted.</li>
                   <li>Your feedback is stored with the archived account for administrators.</li>
                 </ul>
 

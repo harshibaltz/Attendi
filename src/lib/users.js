@@ -17,6 +17,7 @@ const toData = async (promise) => {
 export const usersApi = {
   list: () => toData(api.get('/users/')),
   setStatus: (userId, status) => toData(api.patch(`/users/${userId}/`, { status })),
+  deleteUser: (userId) => toData(api.delete(`/users/${userId}/`)),
 };
 
 export default usersApi;

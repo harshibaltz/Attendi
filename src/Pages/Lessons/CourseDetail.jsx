@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Loader2, Upload, Download, Trash2, FileText, FileImage,
   FileSpreadsheet, FileArchive, Presentation, Megaphone, FolderOpen, Send,
   ClipboardCheck, ChevronDown, ChevronRight, RotateCcw, Award,
-  CheckCircle2, Plus, AlertCircle,
+  CheckCircle2, Plus, AlertCircle, Users, ArrowUp, ArrowDown, ArrowUpDown,
 } from 'lucide-react';
 import { learningApi } from '../../lib/learning';
 import { announcementsApi } from '../../lib/announcements';
+import { downloadCsv } from '../../lib/download';
 import { normalizeRole } from '../../lib/profile';
 import CourseDelegatesPanel from '../../components/Attendance/CourseDelegatesPanel';
 import AssessmentPanel from '../../components/Assessment/AssessmentPanel';
@@ -114,6 +115,12 @@ const CourseDetail = ({ user }) => {
   const [editingAssignment, setEditingAssignment] = useState(null);
   const [savingAssignment, setSavingAssignment] = useState(false);
 
+  const [enrollments, setEnrollments] = useState([]);
+  const [enrollmentsLoading, setEnrollmentsLoading] = useState(false);
+  const [enrollmentsError, setEnrollmentsError] = useState('');
+  const [downloadingEnrollments, setDownloadingEnrollments] = useState(null);
+  const [enrollmentSort, setEnrollmentSort] = useState('name');
+  const [enrollmentOrder, setEnrollmentOrder] = useState('asc');
 
   const [message, setMessage] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -167,6 +174,95 @@ const CourseDetail = ({ user }) => {
     }
   }, [offeringId]);
 
+  const loadEnrollments = useCallback(async () => {
+    setEnrollmentsLoading(true);
+    setEnrollmentsError('');
+    try {
+      const data = await learningApi.getEnrollments(offeringId);
+      setEnrollments(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setEnrollments([]);
+      setEnrollmentsError(
+        err?.response?.data?.error?.message || 'Could not load the enrolled students.',
+      );
+    } finally {
+      setEnrollmentsLoading(false);
+    }
+  }, [offeringId]);
+
+  const sortedEnrollments = useMemo(() => {
+    const values = {
+      name: (e) => e.student_name || '',
+      matricule: (e) => e.student_number || '',
+      email: (e) => e.student_email || '',
+      department: (e) => e.department || '',
+      level: (e) => e.level || '',
+      status: (e) => e.status || '',
+      enrolled: (e) => e.enrolled_at || '',
+    };
+    const value = values[enrollmentSort] || values.name;
+    return [...enrollments].sort((a, b) => {
+      const comparison = String(value(a)).localeCompare(String(value(b)), undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      });
+      return enrollmentOrder === 'desc' ? -comparison : comparison;
+    });
+  }, [enrollments, enrollmentSort, enrollmentOrder]);
+
+  const handleDownloadEnrollments = async (fileType = 'csv') => {
+    setDownloadingEnrollments(fileType);
+    setErrorMsg('');
+    try {
+      const isPdf = fileType === 'pdf';
+      const params = new URLSearchParams({
+        sort: enrollmentSort,
+        order: enrollmentOrder,
+      });
+      if (isPdf) params.set('type', 'pdf');
+      await downloadCsv(
+        `/course-offerings/${offeringId}/enrollments/export/?${params.toString()}`,
+        `enrolled-students.${fileType}`,
+      );
+      notify(`Class list ${isPdf ? 'PDF' : 'CSV'} downloaded.`);
+    } catch (err) {
+      notifyError(
+        err?.response?.data?.error?.message || 'Could not download the class list.',
+      );
+    } finally {
+      setDownloadingEnrollments(null);
+    }
+  };
+
+  const toggleEnrollmentSort = (key) => {
+    if (key === enrollmentSort) {
+      setEnrollmentOrder((order) => (order === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setEnrollmentSort(key);
+    setEnrollmentOrder('asc');
+  };
+
+  const sortableHeader = (key, label) => {
+    const active = enrollmentSort === key;
+    const Icon = active && enrollmentOrder === 'desc' ? ArrowDown : active ? ArrowUp : ArrowUpDown;
+    return (
+      <th
+        className="px-4 py-3 font-semibold"
+        aria-sort={active ? (enrollmentOrder === 'asc' ? 'ascending' : 'descending') : 'none'}
+      >
+        <button
+          type="button"
+          onClick={() => toggleEnrollmentSort(key)}
+          title={`Sort by ${label.toLowerCase()}`}
+          className="inline-flex items-center gap-1 uppercase tracking-wide transition-colors hover:text-text-primary"
+        >
+          {label}
+          <Icon size={13} className={active ? 'text-primary' : 'opacity-40'} />
+        </button>
+      </th>
+    );
+  };
 
   const loadSubmissions = async (assignment) => {
     setExpandedAssignment(assignment.id);
@@ -203,7 +299,8 @@ const CourseDetail = ({ user }) => {
     if (tab === 'materials' || tab === 'stream') loadMaterials();
     if (tab === 'announcements' || tab === 'stream') loadAnnouncements();
     if (tab === 'assignments' || tab === 'stream') loadAssignments();
-  }, [tab, loadMaterials, loadAnnouncements, loadAssignments]);
+    if (tab === 'students' && isStaff) loadEnrollments();
+  }, [tab, isStaff, loadMaterials, loadAnnouncements, loadAssignments, loadEnrollments]);
 
   const handleUpload = async () => {
     if (!uploadForm.title.trim() || !uploadForm.file) {
@@ -525,6 +622,7 @@ const CourseDetail = ({ user }) => {
           { key: 'materials', label: `Materials (${materials.length})`, icon: FileText },
           { key: 'announcements', label: `Announcements (${announcements.length})`, icon: Megaphone },
           { key: 'assignments', label: `Assignments (${assignments.length})`, icon: ClipboardCheck },
+          ...(isStaff ? [{ key: 'students', label: 'Students', icon: Users }] : []),
           { key: 'marks', label: 'Marks', icon: Award },
         ].map((t) => (
           <button
@@ -1133,6 +1231,100 @@ const CourseDetail = ({ user }) => {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ---------- ENROLLED STUDENTS ---------- */}
+      {tab === 'students' && isStaff && (
+        <div className="space-y-4">
+          <div className="fet-card p-5 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-text-primary">Enrolled students</h3>
+              <p className="text-sm text-text-secondary mt-1">
+                {enrollmentsLoading
+                  ? 'Loading the class list…'
+                  : `${enrollments.filter((e) => e.status === 'ACTIVE').length} active enrolment${enrollments.filter((e) => e.status === 'ACTIVE').length === 1 ? '' : 's'}`}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => handleDownloadEnrollments('csv')}
+                disabled={Boolean(downloadingEnrollments)}
+                className="fet-btn-primary flex items-center gap-1.5 text-sm"
+              >
+                {downloadingEnrollments === 'csv'
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <Download size={15} />}
+                Download CSV
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDownloadEnrollments('pdf')}
+                disabled={Boolean(downloadingEnrollments)}
+                className="fet-btn-secondary flex items-center gap-1.5 text-sm"
+              >
+                {downloadingEnrollments === 'pdf'
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <FileText size={15} />}
+                Download PDF
+              </button>
+            </div>
+          </div>
+
+          {enrollmentsLoading ? (
+            <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+          ) : enrollmentsError ? (
+            <div className="fet-card p-6 text-center">
+              <p className="text-sm text-danger">{enrollmentsError}</p>
+              <button type="button" onClick={loadEnrollments} className="fet-btn-secondary mt-3 text-sm">
+                Retry
+              </button>
+            </div>
+          ) : enrollments.length === 0 ? (
+            <div className="fet-card p-10 text-center text-text-secondary">
+              No students are enrolled in this course yet.
+            </div>
+          ) : (
+            <div className="fet-card overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border-default text-left text-xs uppercase tracking-wide text-text-secondary">
+                    {sortableHeader('name', 'Student')}
+                    {sortableHeader('matricule', 'Matricule')}
+                    {sortableHeader('email', 'Email')}
+                    {sortableHeader('department', 'Department')}
+                    {sortableHeader('level', 'Level')}
+                    {sortableHeader('status', 'Status')}
+                    {sortableHeader('enrolled', 'Enrolled on')}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedEnrollments.map((e) => (
+                    <tr key={e.id} className="border-b border-border-default last:border-0">
+                      <td className="px-4 py-3 font-medium text-text-primary">{e.student_name || '—'}</td>
+                      <td className="px-4 py-3 text-text-secondary">{e.student_number || '—'}</td>
+                      <td className="px-4 py-3 text-text-secondary">{e.student_email || '—'}</td>
+                      <td className="px-4 py-3 text-text-secondary">{e.department || '—'}</td>
+                      <td className="px-4 py-3 text-text-secondary">{e.level || '—'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                          e.status === 'ACTIVE'
+                            ? 'bg-green-50 text-green-700'
+                            : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {e.status === 'ACTIVE' ? 'Active' : 'Dropped'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-text-secondary">
+                        {e.enrolled_at ? new Date(e.enrolled_at).toLocaleString() : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

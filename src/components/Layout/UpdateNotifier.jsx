@@ -19,8 +19,8 @@ import { RefreshCw } from 'lucide-react';
  * the case this has to cover.
  */
 
-const CHECK_MS = 5 * 60 * 1000; // background re-check cadence
-const FIRST_CHECK_MS = 8 * 1000; // let first paint settle before checking
+const CHECK_MS = 60 * 1000; // background re-check cadence
+const FIRST_CHECK_MS = 2 * 1000; // let first paint settle before checking
 
 /** The module script the current index.html points at: /assets/index-<hash>.js */
 const loadedBundle = () => {
@@ -56,13 +56,38 @@ const UpdateNotifier = () => {
       setPending(true);
     };
 
+    // A cache that keeps answering with the previous shell must not turn into
+    // a reload loop, so at most one automatic reload is allowed per interval.
+    const reloadAllowed = () => {
+      try {
+        const last = Number(sessionStorage.getItem('fet_build_reload_at') || 0);
+        if (Date.now() - last < 30_000) return false;
+        sessionStorage.setItem('fet_build_reload_at', String(Date.now()));
+        return true;
+      } catch {
+        return true;
+      }
+    };
+
+    // Reload straight away only where there is no work in progress: a hidden
+    // tab or the signed-out screen. An active page keeps the banner so a form
+    // is never thrown away by a background deploy.
+    const reloadIfIdle = () => {
+      if (document.hidden || localStorage.getItem('fet_auth') !== 'true') {
+        if (reloadAllowed()) window.location.reload();
+      }
+    };
+
     const check = async () => {
       if (checkingRef.current) return;
       checkingRef.current = true;
       try {
         const remote = await deployedBundle();
         const local = loadedBundle();
-        if (remote && local && remote !== local) markPending();
+        if (remote && local && remote !== local) {
+          markPending();
+          reloadIfIdle();
+        }
       } catch {
         // Offline or a transient network error — the next tick retries.
       } finally {
@@ -71,7 +96,10 @@ const UpdateNotifier = () => {
     };
 
     const onVisible = () => {
-      if (document.hidden) return;
+      if (document.hidden) {
+        if (pendingRef.current) reloadIfIdle();
+        return;
+      }
       check();
     };
 
