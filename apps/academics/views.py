@@ -21,6 +21,7 @@ from apps.core.scoping import (
 )
 from apps.audit.services import audit
 from apps.core.csv_export import csv_response
+from apps.core.pdf_export import pdf_table_response
 from apps.learning.models import Assessment, AssessmentMark, AssignmentSubmission
 
 from .models import (
@@ -344,6 +345,17 @@ class CourseOfferingListView(APIView):
             CourseOffering.objects
             .select_related("course", "semester", "department", "lecturer", "co_lecturer")
             .prefetch_related("departments")
+            .annotate(
+                materials_count=db_models.Count("materials", distinct=True),
+                announcements_count=db_models.Count("announcements", distinct=True),
+                assignments_count=db_models.Count("assignments", distinct=True),
+                assessments_count=db_models.Count("assessments", distinct=True),
+                enrolled_students=db_models.Count(
+                    "enrollments",
+                    filter=db_models.Q(enrollments__status=Enrollment.Status.ACTIVE),
+                    distinct=True,
+                ),
+            )
             .all()
         )
         for param in ("course_id", "semester_id"):
@@ -554,13 +566,21 @@ class EnrollmentListView(APIView):
         offering = get_object_or_404(CourseOffering, id=offering_id)
         if request.user.role in {User.Role.FACULTY_ADMIN, User.Role.DEPARTMENT_ADMIN} and not can_administer_offering(request.user, offering):
             return Response(status=status.HTTP_403_FORBIDDEN)
+        if request.user.role == User.Role.LECTURER and not is_offering_teacher(request.user, offering):
+            return Response(
+                {"success": False, "error": {"code": "FORBIDDEN", "message": "You do not teach this course."}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         if request.user.role == "STUDENT":
             if not Enrollment.objects.filter(student=request.user, course_offering=offering, status=Enrollment.Status.ACTIVE).exists():
                 return Response(
                     {"success": False, "error": {"code": "FORBIDDEN", "message": "You are not enrolled in this course."}},
                     status=status.HTTP_403_FORBIDDEN,
                 )
-        enrollments = Enrollment.objects.filter(course_offering=offering).select_related("student")
+        enrollments = (
+            Enrollment.objects.filter(course_offering=offering)
+            .select_related("student", "student__student_profile", "student__student_profile__department")
+        )
         return Response(EnrollmentSerializer(enrollments, many=True).data)
 
     def post(self, request, offering_id):
@@ -623,6 +643,100 @@ class EnrollmentListView(APIView):
         enrollment.save(update_fields=["status", "dropped_at", "updated_at"])
         audit(user=request.user, action="STUDENT_DROPPED", resource_type="Enrollment", resource_id=enrollment.id, request=request)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class EnrollmentExportView(APIView):
+    """GET /api/v1/course-offerings/{id}/enrollments/export/ - class list CSV.
+
+    Available to the course lecturer/co-lecturer and to administrators who can
+    administer the offering. Only active enrolments are exported; withdrawn
+    (``DROPPED``) records stay in the database for the academic history.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    HEADER = [
+        "Student name",
+        "Matricule",
+        "Department",
+        "Level",
+    ]
+
+    SORT_FIELDS = {
+        "name": ("student__first_name", "student__last_name"),
+        "matricule": ("student__student_profile__student_number",),
+        "email": ("student__email",),
+        "department": ("student__student_profile__department__name",),
+        "level": ("student__student_profile__level",),
+        "status": ("status",),
+        "enrolled": ("enrolled_at",),
+    }
+
+    def get(self, request, offering_id):
+        offering = get_object_or_404(
+            CourseOffering.objects.select_related("course", "semester"), id=offering_id
+        )
+        user = request.user
+        allowed = (
+            user.role == User.Role.SYSTEM_ADMIN
+            or (user.role in {User.Role.FACULTY_ADMIN, User.Role.DEPARTMENT_ADMIN}
+                and can_administer_offering(user, offering))
+            or (user.role == User.Role.LECTURER and is_offering_teacher(user, offering))
+        )
+        if not allowed:
+            return Response(
+                {"success": False, "error": {"code": "FORBIDDEN", "message": "You cannot export this class list."}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        sort = (request.query_params.get("sort") or "name").lower()
+        order = (request.query_params.get("order") or "asc").lower()
+        sort_fields = self.SORT_FIELDS.get(sort, self.SORT_FIELDS["name"])
+        if order == "desc":
+            sort_fields = tuple(f"-{field}" for field in sort_fields)
+
+        enrollments = (
+            Enrollment.objects.filter(
+                course_offering=offering,
+                status=Enrollment.Status.ACTIVE,
+            )
+            .select_related("student", "student__student_profile", "student__student_profile__department")
+            .order_by(*sort_fields)
+        )
+
+        rows = []
+        for enrollment in enrollments:
+            student = enrollment.student
+            profile = getattr(student, "student_profile", None)
+            department = profile.department if profile else None
+            rows.append([
+                student.get_full_name(),
+                profile.student_number if profile else "",
+                department.name if department else "",
+                profile.level if profile else "",
+            ])
+
+        code = "".join(
+            ch if ch.isalnum() or ch in "-_" else "-" for ch in (offering.course.code or "course")
+        )
+        today = tz.localdate().isoformat()
+        if (request.query_params.get("type") or "").lower() == "pdf":
+            title = f"Enrolled students - {offering.course.code} {offering.course.title}"
+            subtitle = f"{offering.semester.name} - generated {today}"
+            pdf_header = ["No.", *self.HEADER]
+            pdf_rows = [
+                [number, *row]
+                for number, row in enumerate(rows, start=1)
+            ]
+            return pdf_table_response(
+                f"enrolled-students-{code}-{today}.pdf",
+                title,
+                subtitle,
+                pdf_header,
+                pdf_rows,
+                column_weights=[0.05, 0.32, 0.15, 0.33, 0.15],
+            )
+        return csv_response(f"enrolled-students-{code}-{today}.csv", self.HEADER, rows)
 
 
 class MyCoursesView(APIView):

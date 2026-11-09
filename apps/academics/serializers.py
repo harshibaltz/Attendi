@@ -55,6 +55,11 @@ class CourseOfferingSerializer(serializers.ModelSerializer):
     lecturer_name = serializers.SerializerMethodField()
     co_lecturer_name = serializers.SerializerMethodField()
     department_names = serializers.SerializerMethodField()
+    materials_count = serializers.SerializerMethodField()
+    announcements_count = serializers.SerializerMethodField()
+    assignments_count = serializers.SerializerMethodField()
+    assessments_count = serializers.SerializerMethodField()
+    enrolled_students = serializers.SerializerMethodField()
 
     class Meta:
         model = CourseOffering
@@ -62,7 +67,8 @@ class CourseOfferingSerializer(serializers.ModelSerializer):
             "id", "course", "course_code", "course_title", "semester", "semester_name",
             "department", "department_name", "departments", "department_names",
             "lecturer", "lecturer_name", "co_lecturer", "co_lecturer_name", "status",
-            "registration_deadline",
+            "registration_deadline", "materials_count", "announcements_count",
+            "assignments_count", "assessments_count", "enrolled_students",
         ]
 
     def get_lecturer_name(self, obj):
@@ -74,20 +80,68 @@ class CourseOfferingSerializer(serializers.ModelSerializer):
     def get_department_names(self, obj):
         return [d.name for d in obj.departments.all()]
 
+    @staticmethod
+    def _annotated(obj, name):
+        value = getattr(obj, name, None)
+        return value if value is not None else None
+
+    def get_materials_count(self, obj):
+        cached = self._annotated(obj, "materials_count")
+        return cached if cached is not None else obj.materials.count()
+
+    def get_announcements_count(self, obj):
+        cached = self._annotated(obj, "announcements_count")
+        return cached if cached is not None else obj.announcements.count()
+
+    def get_assignments_count(self, obj):
+        cached = self._annotated(obj, "assignments_count")
+        return cached if cached is not None else obj.assignments.count()
+
+    def get_assessments_count(self, obj):
+        cached = self._annotated(obj, "assessments_count")
+        return cached if cached is not None else obj.assessments.count()
+
+    def get_enrolled_students(self, obj):
+        cached = self._annotated(obj, "enrolled_students")
+        if cached is not None:
+            return cached
+        return obj.enrollments.filter(status=Enrollment.Status.ACTIVE).count()
+
 
 class EnrollmentSerializer(serializers.ModelSerializer):
     student_email = serializers.CharField(source="student.email", read_only=True)
     student_name = serializers.SerializerMethodField()
+    student_number = serializers.SerializerMethodField()
+    department = serializers.SerializerMethodField()
+    level = serializers.SerializerMethodField()
     course_code = serializers.CharField(source="course_offering.course.code", read_only=True)
     course_title = serializers.CharField(source="course_offering.course.title", read_only=True)
 
     class Meta:
         model = Enrollment
-        fields = ["id", "student", "student_email", "student_name", "course_offering", "course_code", "course_title", "status", "enrolled_at", "dropped_at"]
+        fields = [
+            "id", "student", "student_email", "student_name", "student_number",
+            "department", "level", "course_offering", "course_code", "course_title",
+            "status", "enrolled_at", "dropped_at",
+        ]
         read_only_fields = ["enrolled_at", "dropped_at"]
 
     def get_student_name(self, obj):
         return obj.student.get_full_name()
+
+    def get_student_number(self, obj):
+        profile = getattr(obj.student, "student_profile", None)
+        return profile.student_number if profile else ""
+
+    def get_department(self, obj):
+        profile = getattr(obj.student, "student_profile", None)
+        if not profile or not profile.department:
+            return ""
+        return profile.department.name or profile.department.code
+
+    def get_level(self, obj):
+        profile = getattr(obj.student, "student_profile", None)
+        return profile.level if profile else ""
 
 
 class ClassDefinitionSerializer(serializers.ModelSerializer):

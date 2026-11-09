@@ -22,6 +22,7 @@ urlpatterns = [
     path("course-offerings/create/", views.CourseOfferingCreateView.as_view(), name="offering-create"),
     path("course-offerings/<uuid:offering_id>/", views.CourseOfferingDetailView.as_view(), name="offering-detail"),
     path("course-offerings/<uuid:offering_id>/enrollments/", views.EnrollmentListView.as_view(), name="enrollment-list"),
+    path("course-offerings/<uuid:offering_id>/enrollments/export/", views.EnrollmentExportView.as_view(), name="enrollment-export"),
     path("course-offerings/<uuid:offering_id>/enrollments/<uuid:student_id>/", views.EnrollmentListView.as_view(), name="enrollment-detail"),
     path("students/me/courses/", views.MyCoursesView.as_view(), name="my-courses"),
     path("students/me/register/", views.StudentRegistrationView.as_view(), name="student-register"),

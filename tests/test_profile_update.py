@@ -126,3 +126,31 @@ def test_email_and_matricule_must_not_be_blank():
     for field in ("email", "student_number"):
         resp = client.patch("/api/v1/auth/me/", {field: "   "}, format="json")
         assert resp.status_code == 400, field
+
+
+def test_student_can_change_level():
+    user = _student()
+    resp = _client(user).patch("/api/v1/auth/me/", {"level": "500"}, format="json")
+    assert resp.status_code == 200, resp.content
+    user.refresh_from_db()
+    assert user.student_profile.level == "500"
+
+
+def test_student_level_must_be_supported():
+    user = _student()
+    resp = _client(user).patch("/api/v1/auth/me/", {"level": "600"}, format="json")
+    assert resp.status_code == 400
+    assert "level" in resp.json()["error"]["details"]
+    user.refresh_from_db()
+    assert user.student_profile.level != "600"
+
+
+def test_student_can_change_name():
+    user = _student()
+    resp = _client(user).patch(
+        "/api/v1/auth/me/", {"first_name": "Ada", "last_name": "Lovelace"}, format="json"
+    )
+    assert resp.status_code == 200, resp.content
+    user.refresh_from_db()
+    assert user.first_name == "Ada"
+    assert user.last_name == "Lovelace"

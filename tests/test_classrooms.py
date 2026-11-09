@@ -164,3 +164,46 @@ class TestClassroomCreation:
         api_client.force_authenticate(user=admin)
         resp = api_client.post("/api/v1/classrooms/", {"course_id": str(course.id)}, format="json")
         assert resp.status_code == 201
+
+
+@pytest.mark.django_db
+def test_offering_list_returns_actual_classroom_counts(
+    api_client, cs_department, dept_lecturer, student_user, active_semester, db
+):
+    from apps.announcements.models import Announcement
+    from apps.learning.models import Assessment, Assignment, LearningMaterial
+
+    course = Course.objects.create(code="CSC905", title="Counted", department=cs_department, level="300")
+    offering = CourseOffering.objects.create(
+        course=course, semester=active_semester, department=cs_department, lecturer=dept_lecturer,
+    )
+    Enrollment.objects.create(student=student_user, course_offering=offering)
+    Enrollment.objects.create(
+        student=make_cohort(cs_department, "300", 1, prefix="D")[0],
+        course_offering=offering,
+        status=Enrollment.Status.DROPPED,
+    )
+    LearningMaterial.objects.create(
+        course_offering=offering, uploaded_by=dept_lecturer, title="Slides",
+    )
+    Assignment.objects.create(
+        course_offering=offering, created_by=dept_lecturer, title="Task",
+    )
+    Assessment.objects.create(
+        course_offering=offering, created_by=dept_lecturer, title="CA",
+    )
+    Announcement.objects.create(
+        created_by=dept_lecturer, scope_type=Announcement.ScopeType.COURSE,
+        course_offering=offering, title="Notice", content="Hello",
+    )
+
+    api_client.force_authenticate(user=dept_lecturer)
+    resp = api_client.get("/api/v1/course-offerings/")
+    assert resp.status_code == 200, resp.content
+    rows = resp.json()["data"] if isinstance(resp.json(), dict) else resp.json()
+    row = next(r for r in rows if r["id"] == str(offering.id))
+    assert row["materials_count"] == 1
+    assert row["announcements_count"] == 1
+    assert row["assignments_count"] == 1
+    assert row["assessments_count"] == 1
+    assert row["enrolled_students"] == 1

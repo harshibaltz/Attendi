@@ -4,16 +4,27 @@ Guards the self-deletion contract:
   * strong confirmation (password + typed DELETE + reason) is required,
   * any role may delete, but the last system admin may not,
   * login identifiers are released for re-registration while the account row
-    and all academic records stay intact for administrators,
+    stays for the administrator archive,
+  * course enrolments, attendance records/history and attendance points are
+    permanently deleted, so the closed account disappears from class data,
+  * an administrator may restore the account and its identifiers, but not the
+    deleted course/attendance activity,
   * every refresh token is revoked and the archived account cannot sign in.
 """
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.authentication import get_token_pair_for_user
 from apps.accounts.models import LecturerProfile, StudentProfile, User
-from apps.academics.models import ClassDefinition, ClassSession, CourseOffering
+from apps.academics.models import ClassDefinition, ClassSession, CourseOffering, Enrollment
+from apps.attendance.models import (
+    AttendanceCheckpoint,
+    AttendanceRecord,
+    AttendanceSession,
+    PointsLedger,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -103,6 +114,47 @@ def test_same_email_and_matricule_can_register_again(cs_department):
     assert new_user.id != user.id
     assert new_user.student_profile.student_number == "UB12345"
     assert new_user.student_profile.department_id == cs_department.id
+
+
+def test_student_delete_purges_courses_and_attendance(
+    student_user, student2_user, offering, lecturer_user, class_def, class_session
+):
+    Enrollment.objects.create(
+        student=student_user, course_offering=offering, status=Enrollment.Status.ACTIVE
+    )
+    session = AttendanceSession.objects.create(
+        class_session=class_session,
+        lecturer=lecturer_user,
+        expires_at=timezone.now() + timezone.timedelta(hours=1),
+    )
+    AttendanceRecord.objects.create(attendance_session=session, student=student_user)
+    other_record = AttendanceRecord.objects.create(
+        attendance_session=session, student=student2_user
+    )
+    AttendanceCheckpoint.objects.create(
+        attendance_session=session, student=student_user, checkpoint_number=1
+    )
+    PointsLedger.objects.create(
+        student=student_user,
+        attendance_session=session,
+        category=PointsLedger.Category.SCAN,
+        points=4,
+    )
+
+    client = APIClient()
+    client.force_authenticate(user=student_user)
+    assert _delete(client, password="test1234").status_code == 200
+
+    assert not Enrollment.objects.filter(student=student_user).exists()
+    assert not AttendanceRecord.objects.filter(student=student_user).exists()
+    assert not AttendanceCheckpoint.objects.filter(student=student_user).exists()
+    assert not PointsLedger.objects.filter(student=student_user).exists()
+    # Only the deleted account's activity is removed.
+    assert AttendanceRecord.objects.filter(pk=other_record.pk).exists()
+    # The archive row and profile remain available to administrators.
+    student_user.refresh_from_db()
+    assert student_user.deleted_at is not None
+    assert StudentProfile.objects.filter(user=student_user).exists()
 
 
 def test_wrong_password_does_not_delete_anything():
@@ -243,11 +295,16 @@ def test_admin_still_sees_deleted_account_data_and_feedback():
     assert row["deletion_improvement"] == "The attendance page reloaded too often."
 
 
-def test_deleted_account_cannot_be_restored_from_the_admin_screen():
+def test_admin_can_restore_a_deleted_account_and_its_identifiers():
     user = _user()
+    StudentProfile.objects.create(
+        user=user, student_number="UB777", personal_email="old@test.edu"
+    )
     client = APIClient()
     client.force_authenticate(user=user)
     assert _delete(client).status_code == 200
+    user.refresh_from_db()
+    assert user.email == f"deleted-{user.id}@deleted.invalid"
 
     admin = _user(role=User.Role.SYSTEM_ADMIN, email="admin@test.edu")
     admin_client = APIClient()
@@ -257,5 +314,47 @@ def test_deleted_account_cannot_be_restored_from_the_admin_screen():
         {"status": User.Status.ACTIVE},
         format="json",
     )
+    assert resp.status_code == 200, resp.content
+
+    user.refresh_from_db()
+    assert user.deleted_at is None
+    assert user.email == "delete.me@test.edu"
+    assert user.status == User.Status.ACTIVE
+    assert user.is_active is True
+    assert user.must_change_password is True
+    assert user.deleted_from_email is None
+    profile = StudentProfile.objects.get(user=user)
+    assert profile.student_number == "UB777"
+    assert profile.personal_email == "old@test.edu"
+
+
+def test_restore_refuses_when_the_original_email_was_reused():
+    user = _user()
+    client = APIClient()
+    client.force_authenticate(user=user)
+    assert _delete(client).status_code == 200
+
+    _user(email="delete.me@test.edu")
+    admin = _user(role=User.Role.SYSTEM_ADMIN, email="admin@test.edu")
+    admin_client = APIClient()
+    admin_client.force_authenticate(user=admin)
+    resp = admin_client.patch(
+        reverse("user-detail", kwargs={"user_id": user.id}),
+        {"status": User.Status.ACTIVE},
+        format="json",
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "RESTORE_CONFLICT"
+
+
+def test_self_deletion_cannot_claim_the_admin_reason():
+    user = _user(email="self@test.edu")
+    client = APIClient()
+    client.force_authenticate(user=user)
+
+    resp = _delete(client, reason=User.DeletionReason.ADMIN_DELETED)
     assert resp.status_code == 400
-    assert resp.json()["error"]["code"] == "ACCOUNT_DELETED"
+
+    user.refresh_from_db()
+    assert user.deleted_at is None
+    assert user.is_active is True

@@ -171,7 +171,9 @@ class SelfRegisterSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True, min_length=8)
     password_confirm = serializers.CharField(write_only=True, min_length=8)
     first_name = serializers.CharField(max_length=100, trim_whitespace=True)
-    last_name = serializers.CharField(max_length=100, trim_whitespace=True)
+    last_name = serializers.CharField(
+        max_length=100, allow_blank=True, trim_whitespace=True
+    )
     department = serializers.UUIDField()
     date_of_birth = serializers.DateField(required=False, allow_null=True)
     role = serializers.ChoiceField(choices=[("STUDENT", "Student"), ("LECTURER", "Lecturer")])
@@ -281,7 +283,13 @@ class DeleteAccountSerializer(serializers.Serializer):
 
     password = serializers.CharField(write_only=True, trim_whitespace=False)
     confirm = serializers.CharField(write_only=True)
-    reason = serializers.ChoiceField(choices=User.DeletionReason.choices)
+    reason = serializers.ChoiceField(
+        choices=[
+            choice
+            for choice in User.DeletionReason.choices
+            if choice[0] != User.DeletionReason.ADMIN_DELETED
+        ]
+    )
     improvement = serializers.CharField(
         required=False, allow_blank=True, max_length=2000, trim_whitespace=True
     )
@@ -416,7 +424,7 @@ class ProfileUpdateSerializer(serializers.Serializer):
     """
 
     first_name = serializers.CharField(max_length=100, required=False)
-    last_name = serializers.CharField(max_length=100, required=False)
+    last_name = serializers.CharField(max_length=100, required=False, allow_blank=True)
     date_of_birth = serializers.DateField(required=False, allow_null=True)
     email = serializers.EmailField(required=False)
     student_number = serializers.CharField(max_length=30, required=False)

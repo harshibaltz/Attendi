@@ -1,4 +1,5 @@
 """User management endpoints (API Spec doc 07 §14)."""
+from django.db import transaction
 from django.db.models import Q
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -11,7 +12,8 @@ from apps.core.permissions import IsAdmin
 from apps.audit.services import audit
 from apps.core.scoping import can_view_user, scope_users
 
-from .models import StudentProfile, User
+from .deletion import archive_account
+from .models import LecturerProfile, StudentProfile, User
 from .serializers import AdminUserSerializer, MeSerializer
 
 
@@ -111,6 +113,87 @@ class UserExportView(APIView):
         )
 
 
+
+def _restore_deleted_account(user):
+    """Reclaim a self-deleted account's login identifiers.
+
+    The account's courses and attendance were deleted when it was closed, so a
+    restore only brings back the login. Identifiers are released for reuse, so
+    the original email or matricule may already belong to a new account; in
+    that case restoring would silently hijack the wrong identity, so refuse.
+    """
+    original_email = (user.deleted_from_email or "").strip()
+    original_matricule = user.deleted_from_student_number
+    original_staff = user.deleted_from_staff_number
+    original_personal = user.deleted_from_personal_email
+
+    if not original_email:
+        return (
+            "MISSING_IDENTIFIERS",
+            "This deleted account has no saved original email and cannot be restored.",
+        )
+    if User.objects.filter(email__iexact=original_email).exclude(pk=user.pk).exists():
+        return (
+            "RESTORE_CONFLICT",
+            "The original email is now used by another account. Rename or remove that account before restoring this one.",
+        )
+    student_profile = getattr(user, "student_profile", None)
+    if (
+        student_profile
+        and original_matricule
+        and StudentProfile.objects.filter(student_number=original_matricule)
+        .exclude(pk=student_profile.pk)
+        .exists()
+    ):
+        return (
+            "RESTORE_CONFLICT",
+            "The original matricule is now used by another student. Restore cannot continue.",
+        )
+    lecturer_profile = getattr(user, "lecturer_profile", None)
+    if (
+        lecturer_profile
+        and original_staff
+        and LecturerProfile.objects.filter(staff_number=original_staff)
+        .exclude(pk=lecturer_profile.pk)
+        .exists()
+    ):
+        return (
+            "RESTORE_CONFLICT",
+            "The original staff number is now used by another lecturer. Restore cannot continue.",
+        )
+
+    user.email = original_email
+    user.deleted_at = None
+    user.deletion_reason = ""
+    user.deletion_improvement = ""
+    user.deleted_from_email = None
+    user.deleted_from_personal_email = None
+    user.deleted_from_student_number = None
+    user.deleted_from_staff_number = None
+    user.status = User.Status.ACTIVE
+    user.is_active = True
+    # The old password was made unusable at deletion. The restored owner must
+    # request an OTP and choose a fresh password before signing in.
+    user.must_change_password = True
+
+    if student_profile:
+        update_fields = ["updated_at"]
+        if original_matricule:
+            student_profile.student_number = original_matricule
+            update_fields.append("student_number")
+        if original_personal:
+            student_profile.personal_email = original_personal
+            update_fields.append("personal_email")
+        student_profile.save(update_fields=update_fields)
+    elif lecturer_profile:
+        update_fields = ["updated_at"]
+        if original_staff:
+            lecturer_profile.staff_number = original_staff
+            update_fields.append("staff_number")
+        lecturer_profile.save(update_fields=update_fields)
+    return None
+
+
 class UserDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -143,13 +226,16 @@ class UserDetailView(APIView):
         from django.shortcuts import get_object_or_404
 
         user = get_object_or_404(User, id=user_id)
-        if user.deleted_at:
+        restoring = (
+            bool(user.deleted_at) and request.data.get("status") == User.Status.ACTIVE
+        )
+        if user.deleted_at and not restoring:
             return Response(
                 {
                     "success": False,
                     "error": {
                         "code": "ACCOUNT_DELETED",
-                        "message": "This account was deleted by its owner. Its data is archived for administrators and the login cannot be restored.",
+                        "message": "This account was deleted by its owner. Restore it to reactivate the login.",
                     },
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -185,6 +271,18 @@ class UserDetailView(APIView):
                 {"success": False, "error": {"code": "SELF_DEACTIVATION", "message": "You cannot deactivate your own account."}},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if restoring:
+            error = _restore_deleted_account(user)
+            if error:
+                code, message = error
+                return Response(
+                    {"success": False, "error": {"code": code, "message": message}},
+                    status=(
+                        status.HTTP_409_CONFLICT
+                        if code == "RESTORE_CONFLICT"
+                        else status.HTTP_400_BAD_REQUEST
+                    ),
+                )
         for field in ("first_name", "last_name", "status"):
             if field in request.data:
                 old_val = getattr(user, field)
@@ -202,6 +300,14 @@ class UserDetailView(APIView):
                         request=request, metadata={"old": str(old_val), "new": str(new_val)},
                     )
         user.save()
+        if restoring:
+            audit(
+                user=request.user,
+                action="ACCOUNT_RESTORED",
+                resource_type="User",
+                resource_id=user.id,
+                request=request,
+            )
         if not user.is_active:
             # Access tokens are short-lived JWTs, but a live refresh token would
             # keep minting new ones for up to a week -- kill every session now.
@@ -209,3 +315,68 @@ class UserDetailView(APIView):
 
             _revoke_all_refresh_tokens(user)
         return Response(MeSerializer(user).data)
+
+    def delete(self, request, user_id):
+        """DELETE /api/v1/users/{id}/ - close another account (SYSTEM_ADMIN).
+
+        Same archive + purge as self-deletion, but no target password is needed.
+        The account remains restorable from this screen; its courses and
+        attendance history do not.
+        """
+        from django.shortcuts import get_object_or_404
+
+        if request.user.role != User.Role.SYSTEM_ADMIN:
+            return Response(
+                {"success": False, "error": {"code": "FORBIDDEN", "message": "Only a system administrator can delete accounts."}},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        user = get_object_or_404(User, id=user_id)
+        if user.id == request.user.id:
+            return Response(
+                {"success": False, "error": {"code": "SELF_DELETION", "message": "Use your Profile danger zone to delete your own account."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            locked = User.objects.select_for_update().get(pk=user.pk)
+            if locked.deleted_at:
+                return Response(
+                    {"success": False, "error": {"code": "ACCOUNT_DELETED", "message": "This account is already deleted."}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if locked.role == User.Role.SYSTEM_ADMIN:
+                other_admins = User.objects.filter(
+                    role=User.Role.SYSTEM_ADMIN,
+                    is_active=True,
+                    status=User.Status.ACTIVE,
+                    deleted_at__isnull=True,
+                ).exclude(pk=locked.pk)
+                if not other_admins.exists():
+                    return Response(
+                        {
+                            "success": False,
+                            "error": {
+                                "code": "LAST_SYSTEM_ADMIN",
+                                "message": "You are the last active system administrator. Promote another administrator before deleting this account.",
+                            },
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            purged = archive_account(
+                locked, reason=User.DeletionReason.ADMIN_DELETED
+            )
+            from .views_auth import _revoke_all_refresh_tokens
+
+            _revoke_all_refresh_tokens(locked)
+
+        audit(
+            user=request.user,
+            action="ACCOUNT_DELETED_BY_ADMIN",
+            resource_type="User",
+            resource_id=locked.id,
+            request=request,
+            metadata={"role": locked.role, "purged": purged},
+        )
+        locked.refresh_from_db()
+        return Response(AdminUserSerializer(locked).data)

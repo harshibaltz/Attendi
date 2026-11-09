@@ -10,7 +10,8 @@ import pytest
 from django.urls import reverse
 from rest_framework.test import APIClient
 
-from apps.accounts.models import User
+from apps.accounts.models import StudentProfile, User
+from apps.academics.models import Enrollment
 
 pytestmark = pytest.mark.django_db
 
@@ -183,3 +184,56 @@ def test_invalid_status_is_rejected():
 
     student.refresh_from_db()
     assert student.status == User.Status.ACTIVE
+
+
+def _delete_user(actor, target):
+    client = APIClient()
+    client.force_authenticate(user=actor)
+    return client.delete(reverse("user-detail", kwargs={"user_id": target.id}))
+
+
+def test_admin_can_delete_another_account_and_its_activity(
+    student_user, offering
+):
+    admin = _admin()
+    Enrollment.objects.create(
+        student=student_user, course_offering=offering, status=Enrollment.Status.ACTIVE
+    )
+
+    resp = _delete_user(admin, student_user)
+    assert resp.status_code == 200, resp.content
+
+    student_user.refresh_from_db()
+    assert student_user.deleted_at is not None
+    assert student_user.status == User.Status.ARCHIVED
+    assert student_user.is_active is False
+    assert student_user.email == f"deleted-{student_user.id}@deleted.invalid"
+    assert student_user.deleted_from_email == "student@test.edu"
+    assert student_user.deleted_from_student_number == "STU001"
+    assert not Enrollment.objects.filter(student=student_user).exists()
+    profile = StudentProfile.objects.get(user=student_user)
+    assert profile.student_number is None
+
+    row = resp.json()["data"]
+    assert row["deleted_at"] is not None
+    assert row["deleted_from_email"] == "student@test.edu"
+
+
+def test_non_system_admin_cannot_delete_an_account(student_user):
+    actor = _user(role=User.Role.FACULTY_ADMIN, email="faculty@test.edu")
+
+    assert _delete_user(actor, student_user).status_code == 403
+
+    student_user.refresh_from_db()
+    assert student_user.deleted_at is None
+
+
+def test_admin_cannot_delete_their_own_account_through_the_user_endpoint():
+    admin = _admin()
+
+    resp = _delete_user(admin, admin)
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "SELF_DELETION"
+
+    admin.refresh_from_db()
+    assert admin.deleted_at is None

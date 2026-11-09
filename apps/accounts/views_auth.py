@@ -26,6 +26,7 @@ from apps.audit.services import audit
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
+from .deletion import archive_account
 from .authentication import (
     clear_jwt_cookies,
     get_token_pair_for_user,
@@ -318,8 +319,9 @@ class DeleteAccountView(APIView):
         again,
       * the matricule/staff number is moved to the admin-only archive fields
         and cleared from the profile.
-    The academic records (attendance, submissions, marks, projects) stay
-    attached to the old row and remain visible to administrators only.
+    Course enrolments, attendance records/history and attendance points are
+    deleted permanently. An administrator can still restore the account and
+    its identifiers, but not that activity.
     """
 
     permission_classes = [IsAuthenticated]
@@ -366,75 +368,10 @@ class DeleteAccountView(APIView):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-            student_profile = getattr(locked, "student_profile", None)
-            lecturer_profile = getattr(locked, "lecturer_profile", None)
-
-            locked.deleted_at = timezone.now()
-            locked.deletion_reason = data["reason"]
-            locked.deletion_improvement = data.get("improvement", "")
-            locked.deleted_from_email = locked.email
-            locked.email = f"deleted-{locked.id}@deleted.invalid"
-            locked.is_active = False
-            locked.status = User.Status.ARCHIVED
-            locked.must_change_password = False
-            locked.reset_otp_hash = None
-            locked.reset_otp_expires = None
-            locked.reset_otp_attempts = 0
-            locked.set_unusable_password()
-
-            if student_profile is not None:
-                locked.deleted_from_personal_email = student_profile.personal_email
-                locked.deleted_from_student_number = student_profile.student_number
-                student_profile.student_number = None
-                student_profile.personal_email = None
-                student_profile.profile_image_reference = ""
-                student_profile.profile_bio = ""
-                student_profile.skills = []
-                student_profile.achievements = []
-                student_profile.save(
-                    update_fields=[
-                        "student_number",
-                        "personal_email",
-                        "profile_image_reference",
-                        "profile_bio",
-                        "skills",
-                        "achievements",
-                        "updated_at",
-                    ]
-                )
-            elif lecturer_profile is not None:
-                locked.deleted_from_staff_number = lecturer_profile.staff_number
-                lecturer_profile.staff_number = None
-                lecturer_profile.profile_image_reference = ""
-                lecturer_profile.bio = ""
-                lecturer_profile.save(
-                    update_fields=[
-                        "staff_number",
-                        "profile_image_reference",
-                        "bio",
-                        "updated_at",
-                    ]
-                )
-
-            locked.save(
-                update_fields=[
-                    "deleted_at",
-                    "deletion_reason",
-                    "deletion_improvement",
-                    "deleted_from_email",
-                    "deleted_from_personal_email",
-                    "deleted_from_student_number",
-                    "deleted_from_staff_number",
-                    "email",
-                    "is_active",
-                    "status",
-                    "must_change_password",
-                    "reset_otp_hash",
-                    "reset_otp_expires",
-                    "reset_otp_attempts",
-                    "password",
-                    "updated_at",
-                ]
+            purged = archive_account(
+                locked,
+                reason=data["reason"],
+                improvement=data.get("improvement", ""),
             )
             _revoke_all_refresh_tokens(locked)
 
@@ -444,11 +381,11 @@ class DeleteAccountView(APIView):
             resource_type="User",
             resource_id=user.id,
             request=request,
-            metadata={"reason": data["reason"], "role": user.role},
+            metadata={"reason": data["reason"], "role": user.role, "purged": purged},
         )
         resp = Response(
             {
-                "message": "Your account has been deleted. Your academic records are kept by the school and are visible to administrators only."
+                "message": "Your account has been deleted. Your course enrolments and attendance history have been permanently removed."
             },
             status=status.HTTP_200_OK,
         )

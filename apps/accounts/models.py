@@ -49,6 +49,7 @@ class User(AbstractBaseUser, PermissionsMixin, TimeStampedUUIDModel):
         PRIVACY = "PRIVACY", "Privacy concerns"
         TOO_MANY_ISSUES = "TOO_MANY_ISSUES", "Problems or bugs with the platform"
         SWITCHING_ACCOUNT = "SWITCHING_ACCOUNT", "I want to create a new account"
+        ADMIN_DELETED = "ADMIN_DELETED", "Deleted by an administrator"
         OTHER = "OTHER", "Other"
 
     email = models.EmailField(unique=True, db_index=True)

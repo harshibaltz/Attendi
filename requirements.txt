@@ -11,3 +11,4 @@ gunicorn>=21.2
 pytest>=8.0
 pytest-django>=4.8
 python-dotenv>=1.0
+reportlab>=4.0

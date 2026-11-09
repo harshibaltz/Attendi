@@ -84,9 +84,6 @@ class Command(BaseCommand):
         cs_dept, _ = Department.objects.get_or_create(
             code="CS", defaults={"faculty": fet, "name": "Computer Science", "description": "Computer Science Department"}
         )
-        ee_dept, _ = Department.objects.get_or_create(
-            code="EE", defaults={"faculty": fet, "name": "Electrical Engineering", "description": "Electrical Engineering Department"}
-        )
         _ = department_objs
 
         # --- Semester ---

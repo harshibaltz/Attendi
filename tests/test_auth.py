@@ -139,6 +139,32 @@ class TestAuth:
         assert user.student_profile.department == dept
         assert user.student_profile.level == "300"
 
+    def test_self_register_accepts_a_single_name_without_a_placeholder_surname(self):
+        fet = Faculty.objects.create(code="FET", name="Faculty of Engineering and Technology")
+        dept = Department.objects.create(faculty=fet, code="CS", name="Computer Science")
+        client = Client()
+        resp = client.post(
+            reverse("auth-self-register"),
+            data={
+                "email": "solo@student.ubuea.cm",
+                "password": "pass12345",
+                "password_confirm": "pass12345",
+                "first_name": "Solo",
+                "last_name": "",
+                "department": str(dept.id),
+                "role": "STUDENT",
+                "matricule": "2026SOLO1",
+                "level": "300",
+                "personal_email": "solo.personal@gmail.com",
+            },
+            content_type="application/json",
+        )
+        assert resp.status_code == 201, resp.content
+        user = User.objects.get(email="solo@student.ubuea.cm")
+        assert user.first_name == "Solo"
+        assert user.last_name == ""
+        assert user.get_full_name() == "Solo"
+
     def test_self_register_duplicate_matricule_returns_field_message(self):
         fet = Faculty.objects.create(code="FET", name="Faculty of Engineering and Technology")
         dept = Department.objects.create(faculty=fet, code="CIV", name="Civil Engineering")
