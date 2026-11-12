@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Building2, CalendarRange, Plus, Check, X, BookOpen, UserCheck, ChevronDown, Download } from 'lucide-react';
+import { Building2, CalendarRange, Plus, Check, X, BookOpen, UserCheck, ChevronDown, Download, Search } from 'lucide-react';
 import { SectionHeader, Card, CardBody, CardHead, DataTable, Pill, Callout, EmptyState, Tabs } from '../UI';
 import { academicsApi } from '../../lib/academics';
 import { errorMessage } from '../../lib/enrollment';
@@ -435,6 +435,7 @@ const CourseOfferingPanel = () => {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busyId, setBusyId] = useState('');
+  const [query, setQuery] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -514,6 +515,26 @@ const CourseOfferingPanel = () => {
   };
 
   const unassigned = rows.filter((row) => !row.lecturer).length;
+  const filteredRows = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    if (!term) return rows;
+    const lecturerName = (id) => {
+      const lecturer = lecturers.find((item) => item.id === id);
+      return lecturer ? `${lecturer.full_name || ''} ${lecturer.email || ''}` : '';
+    };
+    return rows.filter((row) => [
+      row.course_code,
+      row.course_title,
+      row.department_name,
+      row.semester_name,
+      row.lecturer_name,
+      row.co_lecturer_name,
+      lecturerName(row.lecturer),
+      lecturerName(row.co_lecturer),
+      ...(row.department_names || []),
+    ].some((value) => String(value || '').toLowerCase().includes(term)));
+  }, [lecturers, query, rows]);
+
   const columns = [
     {
       key: 'course_code',
@@ -639,15 +660,35 @@ const CourseOfferingPanel = () => {
       </Callout>
       <Card accent="hub">
         <CardHead title="Course offerings" square="hub">
-          <button type="button" onClick={load} className="fet-btn-secondary text-[12px]">Refresh</button>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="relative min-w-[220px]">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search course, code, department, lecturer"
+                aria-label="Search course offerings"
+                className="fet-input pl-9 text-[12px] py-1"
+              />
+            </div>
+            {query ? (
+              <span className="text-[12px] text-text-secondary">
+                {filteredRows.length} of {rows.length}
+              </span>
+            ) : null}
+            <button type="button" onClick={load} className="fet-btn-secondary text-[12px]">Refresh</button>
+          </div>
         </CardHead>
         <CardBody>
           <DataTable
             columns={columns}
-            rows={rows}
+            rows={filteredRows}
             empty={loading
               ? <p className="text-text-secondary text-[13px] py-6 text-center">Loading offerings...</p>
-              : <EmptyState icon={BookOpen} title="No course offerings yet" subtitle="Create offerings before assigning lecturers." />}
+              : rows.length > 0
+                ? <EmptyState icon={Search} title="No course matches that search" subtitle="Try a course code, title, department, or lecturer name." />
+                : <EmptyState icon={BookOpen} title="No course offerings yet" subtitle="Create offerings before assigning lecturers." />}
           />
         </CardBody>
       </Card>

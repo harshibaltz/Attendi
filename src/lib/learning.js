@@ -60,9 +60,10 @@ export const learningApi = {
   getSubmissions: (assignmentId) => toData(api.get(`/assignments/${assignmentId}/submissions/`)),
   submitAssignment: (assignmentId, data) => toData(api.post(`/assignments/${assignmentId}/submissions/`, data)),
   gradeSubmission: (submissionId, data) => toData(api.patch(`/submissions/${submissionId}/`, data)),
-  // Classrooms: a lecturer opens a classroom for one of their own courses and
-  // every registered student for that course is enrolled automatically.
-  availableClassroomCourses: () => toData(api.get('/classrooms/available-courses/')),
+  // Classrooms: staff open a classroom; students then decide whether to register.
+  availableClassroomCourses: (semesterId) => toData(api.get(
+    semesterId ? `/classrooms/available-courses/?semester_id=${encodeURIComponent(semesterId)}` : '/classrooms/available-courses/',
+  )),
   createClassroom: (data) => toData(api.post('/classrooms/', data)),
   // Assessment marks: lecturer creates a CA/exam sheet, types the marks,
   // publishes it; students review and can dispute. CSV export for the lecturer.

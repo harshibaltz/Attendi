@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2, BookOpen, Users, FileText, ArrowRight, Plus, X, CheckCircle2, AlertTriangle, Search, ClipboardCheck } from 'lucide-react';
 import { learningApi } from '../../lib/learning';
+import { academicsApi } from '../../lib/academics';
 import { enrollmentApi, errorMessage } from '../../lib/enrollment';
 import { normalizeRole } from '../../lib/profile';
 import {
@@ -18,9 +19,14 @@ const MyCourses = ({ user }) => {
 
   const role = normalizeRole(user?.role);
   const isStaff = role === 'lecturer' || role === 'admin';
+  const isAdmin = role === 'admin';
 
   const [showCreate, setShowCreate] = useState(false);
   const [available, setAvailable] = useState(null);
+  const [semesters, setSemesters] = useState([]);
+  const [lecturers, setLecturers] = useState([]);
+  const [selectedSemester, setSelectedSemester] = useState('');
+  const [selectedLecturer, setSelectedLecturer] = useState('');
   const [selectedCourse, setSelectedCourse] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
@@ -34,13 +40,40 @@ const MyCourses = ({ user }) => {
     setCreateError('');
     setCreated(null);
     setSelectedCourse('');
+    setSelectedLecturer('');
     setCourseQuery('');
     setAvailable(null);
+    setSemesters([]);
+    setLecturers([]);
+    setSelectedSemester('');
     try {
       const data = await learningApi.availableClassroomCourses();
       setAvailable(data);
+      setSelectedSemester(data?.semester_id || '');
+      if (isAdmin) {
+        const [semesterRows, lecturerRows] = await Promise.all([
+          academicsApi.semesters(),
+          academicsApi.lecturers(),
+        ]);
+        setSemesters(semesterRows || []);
+        setLecturers(lecturerRows || []);
+      }
     } catch (err) {
       setCreateError(err.response?.data?.error?.message || 'Could not load your courses.');
+    }
+  };
+
+  const changeSemester = async (semesterId) => {
+    setSelectedSemester(semesterId);
+    setSelectedCourse('');
+    setCourseQuery('');
+    setAvailable(null);
+    setCreateError('');
+    try {
+      const data = await learningApi.availableClassroomCourses(semesterId);
+      setAvailable(data);
+    } catch (err) {
+      setCreateError(err.response?.data?.error?.message || 'Could not load courses for that semester.');
     }
   };
 
@@ -49,7 +82,11 @@ const MyCourses = ({ user }) => {
     setCreating(true);
     setCreateError('');
     try {
-      const result = await learningApi.createClassroom({ course_id: selectedCourse });
+      const result = await learningApi.createClassroom({
+        course_id: selectedCourse,
+        ...(selectedSemester ? { semester_id: selectedSemester } : {}),
+        ...(isAdmin && selectedLecturer ? { lecturer_id: selectedLecturer } : {}),
+      });
       setCreated(result);
       const load = async () => {
         const data = await learningApi.getMyCourses(user?.role || 'student');
@@ -359,12 +396,14 @@ const MyCourses = ({ user }) => {
 
       {showCreate && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="fet-card bg-white rounded-2xl shadow-modal w-full max-w-lg">
+          <div className="fet-card bg-white rounded-2xl shadow-modal w-full max-w-lg max-h-[90dvh] overflow-y-auto">
             <div className="flex items-center justify-between p-5 border-b border-border-default">
               <div>
                 <h3 className="text-lg font-bold text-text-primary">Create a classroom</h3>
                 <p className="text-xs text-text-secondary mt-0.5">
-                  Pick one of your courses. Everyone registered for it joins automatically.
+                  {isAdmin
+                    ? 'Open a course for any semester and assign a lecturer now or later.'
+                    : 'Pick one of your courses. Students decide whether to register.'}
                 </p>
               </div>
               <button onClick={() => setShowCreate(false)} className="p-1.5 hover:bg-page-bg rounded-lg">
@@ -387,8 +426,8 @@ const MyCourses = ({ user }) => {
                     <div>
                       <p className="font-semibold">{created.course_code} classroom is ready</p>
                       <p className="mt-0.5">
-                        {created.auto_enrolled} student{created.auto_enrolled === 1 ? '' : 's'} enrolled
-                        automatically for {created.semester}.
+                        Students can now register for it in {created.semester}. No one was enrolled
+                        automatically{created.lecturer ? `; lecturer: ${created.lecturer}` : '; no lecturer is assigned yet'}.
                       </p>
                     </div>
                   </div>
@@ -404,6 +443,46 @@ const MyCourses = ({ user }) => {
                 </div>
               ) : (
                 <>
+                  {isAdmin && (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="fet-label" htmlFor="classroom-semester">Semester</label>
+                        <select
+                          id="classroom-semester"
+                          value={selectedSemester}
+                          onChange={(e) => changeSemester(e.target.value)}
+                          className="fet-select"
+                        >
+                          <option value="">Active semester</option>
+                          {selectedSemester && !semesters.some((s) => s.id === selectedSemester) ? (
+                            <option value={selectedSemester}>{available?.semester_name || 'Selected semester'}</option>
+                          ) : null}
+                          {semesters.map((semester) => (
+                            <option key={semester.id} value={semester.id}>
+                              {semester.name}{semester.is_active ? ' (active)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="fet-label" htmlFor="classroom-lecturer">Lecturer (optional)</label>
+                        <select
+                          id="classroom-lecturer"
+                          value={selectedLecturer}
+                          onChange={(e) => setSelectedLecturer(e.target.value)}
+                          className="fet-select"
+                        >
+                          <option value="">Assign later</option>
+                          {lecturers.map((lecturer) => (
+                            <option key={lecturer.id} value={lecturer.id}>
+                              {lecturer.full_name || lecturer.email}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
                   <div>
                     <label className="fet-label">Course</label>
                     {!available ? (
@@ -413,8 +492,12 @@ const MyCourses = ({ user }) => {
                     ) : selectableCourses.length === 0 ? (
                       <p className="text-sm text-text-secondary py-3">
                         {available.courses?.length
-                          ? 'Every course in your department already has a classroom open this semester.'
-                          : 'You have no courses assigned yet. Ask your department admin to assign you a course.'}
+                          ? (isAdmin
+                            ? 'Every course already has a classroom in this semester. Choose another semester above.'
+                            : 'Every course in your department already has a classroom open this semester.')
+                          : (isAdmin
+                            ? 'There are no active courses available for this semester.'
+                            : 'You have no courses assigned yet. Ask your department admin to assign you a course.')}
                       </p>
                     ) : (
                       <div className="space-y-2">
@@ -468,9 +551,12 @@ const MyCourses = ({ user }) => {
                     <p className="text-xs text-text-secondary bg-page-bg rounded-lg p-3 flex items-start gap-2">
                       <Users size={14} className="mt-0.5 shrink-0" />
                       <span>
-                        Creating this classroom will enrol all {selected.cohort_size} registered student
-                        {selected.cohort_size === 1 ? '' : 's'} into it right away, so you can post
-                        materials and assignments immediately.
+                        {selected.cohort_size} student{selected.cohort_size === 1 ? '' : 's'} are in this
+                        course cohort. They are not enrolled automatically; each student registers for the
+                        course themselves.
+                        {isAdmin && !selectedLecturer
+                          ? ' No lecturer is selected, so assign one now or later in Academic setup.'
+                          : ''}
                       </span>
                     </p>
                   )}

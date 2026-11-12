@@ -283,7 +283,7 @@ const StudentAttendance = ({ user }) => {
             icon={Award}
             value={points.total_points}
             label="Total points"
-            help="Earn points when your attendance is confirmed: 4 points for a check-in scan, 5 when you are picked as a class station, and 10 when you are named Student of the Class. Your total is the sum of all points earned across your courses."
+            help="Earn points when your attendance is confirmed: 3 points for a check-in scan or when you are picked as a class station, and 10 when you are named Student of the Class. Your total is the sum of all points earned across your courses."
           />
           <AttendanceMetricCard
             icon={CreditCard}
