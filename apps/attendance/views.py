@@ -20,7 +20,6 @@ from apps.academics.models import (
     ClassDefinition, ClassSchedule, ClassSession, CourseOffering, Enrollment, Semester,
 )
 from apps.academics.serializers import ClassScheduleSerializer
-from apps.academics.services import enroll_cohort
 from apps.core.scoping import can_administer_offering, is_offering_teacher, scope_by_department
 from apps.core.permissions import IsLecturer, IsStudent
 from apps.core.throttling import PollingRateThrottle
@@ -155,14 +154,6 @@ class FlexibleStartAttendanceView(APIView):
                 {"success": False, "error": {"code": "FORBIDDEN", "message": "You are not the assigned lecturer for this course."}},
                 status=status.HTTP_403_FORBIDDEN,
             )
-
-        # Safety net for a classroom that was assigned before assignment-time
-        # provisioning existed (or created with no roster): if nobody is
-        # enrolled at all, enrol the course cohort now so the session has
-        # students to mark. An offering with real registrations is left as-is.
-        # The offering row is locked, so concurrent starts cannot double-enrol.
-        if not Enrollment.objects.filter(course_offering=offering).exists():
-            enroll_cohort(offering)
 
         schedule = None
         schedule_id = request.data.get("schedule_id")

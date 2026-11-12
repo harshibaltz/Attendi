@@ -1,8 +1,7 @@
 """Tests for Google-Classroom-style classroom creation (Phase 2).
 
-A lecturer opens a classroom for one of their own department's courses and
-every student registered for that course (same department + level) is
-enrolled automatically.
+Staff open a classroom for a course. Students are never enrolled
+automatically; each student decides whether to register.
 """
 import pytest
 
@@ -91,26 +90,25 @@ class TestClassroomCreation:
         assert "CSC901" in codes
         assert "EE901" not in codes
 
-    def test_create_classroom_auto_enrolls_cohort(
+    def test_create_classroom_does_not_enroll_cohort(
         self, api_client, cs_department, dept_lecturer, active_semester, db
     ):
-        course = Course.objects.create(code="CSC902", title="Auto Enrol", department=cs_department, level="300")
-        cohort = make_cohort(cs_department, "300", 3)
-        # A different level must NOT be pulled in.
+        course = Course.objects.create(code="CSC902", title="Self Register", department=cs_department, level="300")
+        make_cohort(cs_department, "300", 3)
+        # A different level must not be pulled in either.
         make_cohort(cs_department, "200", 2, prefix="L")
 
         api_client.force_authenticate(user=dept_lecturer)
         resp = api_client.post("/api/v1/classrooms/", {"course_id": str(course.id)}, format="json")
         assert resp.status_code == 201, resp.content
         data = resp.json()["data"]
-        assert data["auto_enrolled"] == 3
+        assert data["auto_enrolled"] == 0
         assert data["cohort_size"] == 3
+        assert data["enrollment_mode"] == "SELF_REGISTRATION"
 
         offering = CourseOffering.objects.get(course=course, semester=active_semester)
-        enrolled_ids = set(
-            offering.enrollments.filter(status=Enrollment.Status.ACTIVE).values_list("student_id", flat=True)
-        )
-        assert enrolled_ids == {s.id for s in cohort}
+        assert offering.lecturer == dept_lecturer
+        assert offering.enrollments.count() == 0
 
     def test_lecturer_cannot_create_for_other_department_course(
         self, api_client, other_dept, dept_lecturer, active_semester, db
@@ -130,21 +128,19 @@ class TestClassroomCreation:
         second = api_client.post("/api/v1/classrooms/", {"course_id": str(course.id)}, format="json")
         assert second.status_code == 409
 
-    def test_enrollment_is_not_duplicated(
+    def test_students_register_themselves_after_creation(
         self, api_client, cs_department, dept_lecturer, active_semester, db
     ):
-        course = Course.objects.create(code="CSC904", title="Idem", department=cs_department, level="300")
+        course = Course.objects.create(code="CSC904", title="Self Enrol", department=cs_department, level="300")
         cohort = make_cohort(cs_department, "300", 3)
         api_client.force_authenticate(user=dept_lecturer)
         resp = api_client.post("/api/v1/classrooms/", {"course_id": str(course.id)}, format="json")
         assert resp.status_code == 201
-        assert resp.json()["data"]["auto_enrolled"] == 3
+        assert resp.json()["data"]["auto_enrolled"] == 0
 
         offering = CourseOffering.objects.get(course=course, semester=active_semester)
-        # Exactly one enrollment per cohort member - no duplicates.
-        assert offering.enrollments.count() == 3
-        for student in cohort:
-            assert offering.enrollments.filter(student=student).count() == 1
+        Enrollment.objects.create(student=cohort[0], course_offering=offering)
+        assert offering.enrollments.count() == 1
 
     def test_course_id_required(self, api_client, dept_lecturer, active_semester, db):
         api_client.force_authenticate(user=dept_lecturer)
@@ -164,6 +160,58 @@ class TestClassroomCreation:
         api_client.force_authenticate(user=admin)
         resp = api_client.post("/api/v1/classrooms/", {"course_id": str(course.id)}, format="json")
         assert resp.status_code == 201
+        offering = CourseOffering.objects.get(course=course, semester=active_semester)
+        assert offering.lecturer is None
+        assert offering.enrollments.count() == 0
+
+    def test_admin_may_assign_a_lecturer_when_creating(
+        self, api_client, cs_department, dept_lecturer, active_semester, db
+    ):
+        from apps.accounts.models import User as U
+
+        admin = U.objects.create_user(
+            email="sysadmin2@test.edu", password="test1234",
+            first_name="Sys", last_name="Admin", role="SYSTEM_ADMIN", is_staff=True,
+        )
+        course = Course.objects.create(code="CSC906", title="Assigned", department=cs_department, level="300")
+        api_client.force_authenticate(user=admin)
+        resp = api_client.post(
+            "/api/v1/classrooms/",
+            {"course_id": str(course.id), "lecturer_id": str(dept_lecturer.id)},
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        offering = CourseOffering.objects.get(course=course, semester=active_semester)
+        assert offering.lecturer == dept_lecturer
+
+    def test_admin_may_choose_the_semester(
+        self, api_client, cs_department, active_semester, db
+    ):
+        from datetime import timedelta
+
+        from apps.accounts.models import User as U
+        from django.utils import timezone
+
+        admin = U.objects.create_user(
+            email="sysadmin3@test.edu", password="test1234",
+            first_name="Sys", last_name="Admin", role="SYSTEM_ADMIN", is_staff=True,
+        )
+        next_semester = Semester.objects.create(
+            name="2026/2027 Semester 2",
+            academic_year="2026/2027",
+            number="2",
+            start_date=timezone.now().date() + timedelta(days=120),
+            end_date=timezone.now().date() + timedelta(days=240),
+        )
+        course = Course.objects.create(code="CSC907", title="Next Term", department=cs_department, level="300")
+        api_client.force_authenticate(user=admin)
+        resp = api_client.post(
+            "/api/v1/classrooms/",
+            {"course_id": str(course.id), "semester_id": str(next_semester.id)},
+            format="json",
+        )
+        assert resp.status_code == 201, resp.content
+        assert CourseOffering.objects.filter(course=course, semester=next_semester).exists()
 
 
 @pytest.mark.django_db

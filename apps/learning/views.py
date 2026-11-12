@@ -20,10 +20,17 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.academics.models import Course, CourseOffering, Enrollment, Semester
+from apps.academics.services import levels_for_course
 from apps.accounts.models import User
 from apps.audit.services import audit
 from apps.core.permissions import ADMIN_ROLES
-from apps.core.scoping import can_administer_offering, is_admin, is_offering_teacher, scope_by_department
+from apps.core.scoping import (
+    can_administer_offering,
+    is_admin,
+    is_offering_teacher,
+    scope_by_department,
+    scope_users,
+)
 
 from .models import (
     Assessment,
@@ -510,11 +517,11 @@ def _classroom_courses(user):
 
 
 class AvailableClassroomCoursesView(APIView):
-    """GET /api/v1/classrooms/available-courses/
+    """GET /api/v1/classrooms/available-courses/?semester_id=...
 
-    Courses the lecturer may open a classroom for, with a cohort preview
-    (how many students would be auto-enrolled) and whether a classroom
-    already exists for the active semester.
+    Courses the lecturer may open a classroom for, with a cohort preview and
+    whether a classroom already exists in the requested (or active) semester.
+    Students are never enrolled by this endpoint; registration is their choice.
     """
 
     permission_classes = [IsAuthenticated]
@@ -525,17 +532,22 @@ class AvailableClassroomCoursesView(APIView):
                 {"success": False, "error": {"code": "FORBIDDEN", "message": "Only staff can create classrooms."}},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        semester = Semester.objects.filter(is_active=True).first() or Semester.objects.filter(
-            status="ACTIVE"
-        ).order_by("-academic_year", "number").first()
+        semester_id = request.query_params.get("semester_id")
+        if semester_id:
+            semester = get_object_or_404(Semester, id=semester_id)
+        else:
+            semester = Semester.objects.filter(is_active=True).first() or Semester.objects.filter(
+                status="ACTIVE"
+            ).order_by("-academic_year", "number").first()
         result = []
         for course in _classroom_courses(request.user).order_by("code"):
             cohort = User.objects.filter(
                 role="STUDENT",
                 is_active=True,
                 student_profile__department=course.department,
-                student_profile__level=course.level,
-            ).count() if course.level else 0
+            )
+            if course.level:
+                cohort = cohort.filter(student_profile__level__in=levels_for_course(course.level))
             existing = None
             if semester:
                 off = CourseOffering.objects.filter(course=course, semester=semester).select_related(
@@ -554,7 +566,7 @@ class AvailableClassroomCoursesView(APIView):
                 "department": course.department.name,
                 "level": course.level,
                 "credit_units": course.credit_units,
-                "cohort_size": cohort,
+                "cohort_size": cohort.count() if course.level else 0,
                 "existing_classroom": existing,
             })
         return Response({
@@ -567,9 +579,10 @@ class AvailableClassroomCoursesView(APIView):
 class ClassroomCreateView(APIView):
     """POST /api/v1/classrooms/
 
-    Opens a classroom for one of the lecturer's own courses. Every student
-    registered for that course (same department + level) is enrolled
-    automatically, so the classroom is ready to use immediately.
+    Opens a classroom for one of the lecturer's own courses. No students are
+    enrolled automatically; each student decides whether to register for the
+    offering. Administrators may open a classroom in any semester and assign
+    a lecturer now or later.
     """
 
     permission_classes = [IsAuthenticated]
@@ -601,17 +614,31 @@ class ClassroomCreateView(APIView):
                 {"success": False, "error": {"code": "VALIDATION_ERROR", "message": "No active semester to open a classroom in."}},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if request.user.role not in ADMIN_ROLES and not semester.is_active:
+            return Response(
+                {"success": False, "error": {"code": "VALIDATION_ERROR",
+                 "message": "Lecturers can only open classrooms in the active semester."}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        # Atomic: the offering and its auto-enrollments commit together. Using
-        # get_or_create lets the unique(course, semester) constraint decide the
-        # winner when two requests race, so the loser gets a clean 409.
+        lecturer = request.user if request.user.role == "LECTURER" else None
+        lecturer_id = request.data.get("lecturer_id")
+        if request.user.role in ADMIN_ROLES and lecturer_id:
+            lecturer_qs = scope_users(
+                User.objects.filter(role=User.Role.LECTURER, is_active=True),
+                request.user,
+            )
+            lecturer = get_object_or_404(lecturer_qs, id=lecturer_id)
+
+        # Atomic: get_or_create lets the unique(course, semester) constraint
+        # decide the winner when two requests race, so the loser gets a 409.
         with transaction.atomic():
             offering, created = CourseOffering.objects.get_or_create(
                 course=course,
                 semester=semester,
                 defaults={
                     "department": course.department,
-                    "lecturer": request.user,
+                    "lecturer": lecturer,
                     "status": "ACTIVE",
                 },
             )
@@ -622,26 +649,18 @@ class ClassroomCreateView(APIView):
                     status=status.HTTP_409_CONFLICT,
                 )
 
-            cohort_qs = User.objects.filter(
-                role="STUDENT",
-                is_active=True,
-                student_profile__department=course.department,
-            )
-            if course.level:
-                cohort_qs = cohort_qs.filter(student_profile__level=course.level)
-            enrolled = 0
-            for student in cohort_qs:
-                _e, was_enrolled = Enrollment.objects.get_or_create(
-                    student=student,
-                    course_offering=offering,
-                    defaults={"status": Enrollment.Status.ACTIVE, "enrolled_at": timezone.now()},
-                )
-                if was_enrolled:
-                    enrolled += 1
+        cohort_qs = User.objects.filter(
+            role="STUDENT",
+            is_active=True,
+            student_profile__department=course.department,
+        )
+        if course.level:
+            cohort_qs = cohort_qs.filter(student_profile__level__in=levels_for_course(course.level))
 
         audit(user=request.user, action="CLASSROOM_CREATED", resource_type="CourseOffering",
               resource_id=offering.id, request=request,
-              metadata={"course_code": course.code, "auto_enrolled": enrolled})
+              metadata={"course_code": course.code, "self_registration": True,
+                        "lecturer_id": str(offering.lecturer_id or "")})
 
         return Response({
             "offering_id": str(offering.id),
@@ -649,8 +668,9 @@ class ClassroomCreateView(APIView):
             "course_title": course.title,
             "semester": semester.name,
             "lecturer": offering.lecturer.get_full_name() if offering.lecturer else "",
-            "auto_enrolled": enrolled,
+            "auto_enrolled": 0,
             "cohort_size": cohort_qs.count(),
+            "enrollment_mode": "SELF_REGISTRATION",
         }, status=status.HTTP_201_CREATED)
 
 

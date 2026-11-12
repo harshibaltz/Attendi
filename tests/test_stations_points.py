@@ -174,10 +174,10 @@ class TestAutoStationSelection:
         created = auto_select_stations(session, count=1)
         assert created
         n = Notification.objects.filter(user=created[0].student, title__icontains="station").latest("created_at")
-        assert "first 20" in n.message and "5 station points" in n.message and "4 pts" in n.message
+        assert "first 20" in n.message and "3 station points" in n.message and "3 pts" in n.message
 
     def test_auto_selected_station_is_present_and_paid_immediately(self, class_session, lecturer_user, enrolled_student):
-        """Being picked as a station confirms attendance and pays 5 points
+        """Being picked as a station confirms attendance and pays 3 points
         right away - before any classmate scans the station QR."""
         session = _setup_session(class_session, lecturer_user)
         AttendanceRecord.objects.create(attendance_session=session, student=enrolled_student)
@@ -189,13 +189,13 @@ class TestAutoStationSelection:
             attendance_session=session, student=cp.student, status="PRESENT"
         ).exists()
         entry = PointsLedger.objects.get(student=cp.student, attendance_session=session)
-        assert entry.category == "AUTO_STATION" and entry.points == POINTS["AUTO_STATION"] == 5
+        assert entry.category == "AUTO_STATION" and entry.points == POINTS["AUTO_STATION"] == 3
 
     def test_auto_station_upgrades_the_scan_entry_to_the_station_award(
         self, class_session, lecturer_user, enrolled_student
     ):
         """Auto stations must already have checked in, so they usually hold a
-        SCAN ledger row. Being picked replaces that row with the 5-point
+        SCAN ledger row. Being picked replaces that row with the 3-point
         station award instead of being skipped by the unique constraint."""
         session = _setup_session(class_session, lecturer_user)
         AttendanceRecord.objects.create(attendance_session=session, student=enrolled_student)
@@ -212,7 +212,7 @@ class TestAutoStationSelection:
         assert entries.count() == 1
         entry = entries.get()
         assert entry.category == "AUTO_STATION"
-        assert entry.points == POINTS["AUTO_STATION"] == 5
+        assert entry.points == POINTS["AUTO_STATION"] == 3
 
     def test_no_verified_present_students_returns_empty(self, class_session, lecturer_user, enrolled_student):
         """Past history does not count - nobody verified present this session."""
@@ -265,7 +265,7 @@ class TestTeacherStationAssignment:
         self, class_session, lecturer_user, enrolled_student, api_client
     ):
         """Assigning a station from the roster confirms the student present
-        and pays their 5 station points without waiting for a scan."""
+        and pays their 3 station points without waiting for a scan."""
         api_client.force_authenticate(user=lecturer_user)
         session = _setup_session(class_session, lecturer_user)
 
@@ -279,14 +279,14 @@ class TestTeacherStationAssignment:
         assert record.status == "PRESENT"
         assert record.verification_method == AttendanceRecord.VerificationMethod.QR_STATION
         entry = PointsLedger.objects.get(student=enrolled_student, attendance_session=session)
-        assert entry.category == "TEACHER_STATION" and entry.points == POINTS["TEACHER_STATION"] == 5
+        assert entry.category == "TEACHER_STATION" and entry.points == POINTS["TEACHER_STATION"] == 3
 
 
 @pytest.mark.django_db
 class TestStationScanLimits:
     def test_auto_station_serves_up_to_twenty_scanners(self, offering, class_session, lecturer_user, enrolled_student, cs_department, db):
         """Auto/scan stations: 20 scans; the 21st is rejected with
-        STATION_FULL. Scanners earn 4 pts."""
+        STATION_FULL. Scanners earn 3 pts."""
         from apps.academics.models import Enrollment
         from apps.accounts.models import StudentProfile, User as U
 
@@ -312,12 +312,12 @@ class TestStationScanLimits:
         assert results[20]["success"] is False
         assert results[20]["error_code"] == "STATION_FULL"
 
-        # The twenty successful scanners earned STATION_SCAN 4 pts
+        # The twenty successful scanners earned STATION_SCAN 3 pts
         for scanner in scanners[:20]:
             entry = PointsLedger.objects.get(student=scanner, attendance_session=session)
-            assert entry.category == "STATION_SCAN" and entry.points == POINTS["STATION_SCAN"] == 4
+            assert entry.category == "STATION_SCAN" and entry.points == POINTS["STATION_SCAN"] == 3
 
-        # Owner got their 5 points and a notification
+        # Owner got their 3 points and a notification
         owner_entry = PointsLedger.objects.get(student=enrolled_student, attendance_session=session)
         assert owner_entry.category == "AUTO_STATION"
         from apps.notifications.models import Notification
@@ -352,18 +352,18 @@ class TestStationScanLimits:
         # 6 scanner records + 1 station owner record (from award_station_points)
         assert AttendanceRecord.objects.filter(checkpoint=cp).count() == 7
 
-        # All scanners earned station scan 4 pts
+        # All scanners earned station scan 3 pts
         for scanner in scanners:
             entry = PointsLedger.objects.get(student=scanner, attendance_session=session)
-            assert entry.category == "STATION_SCAN" and entry.points == 4
+            assert entry.category == "STATION_SCAN" and entry.points == 3
 
-        # Owner got 5 pts (same as an auto station)
+        # Owner got 3 pts (same as an auto station)
         owner_entry = PointsLedger.objects.get(student=enrolled_student, attendance_session=session)
         assert owner_entry.category == "TEACHER_STATION" and owner_entry.points == POINTS["TEACHER_STATION"]
 
     def test_projector_scans_unlimited_and_three_points(self, offering, class_session, lecturer_user, enrolled_student, cs_department, db):
         """Projector checkpoints (lecturer-owned) have no scan cap; scanners
-        earn the regular 4 pts."""
+        earn the regular 3 pts."""
         from apps.academics.models import Enrollment
         from apps.accounts.models import StudentProfile, User as U
 
@@ -384,13 +384,13 @@ class TestStationScanLimits:
             r = validate_and_record_scan(f"ptok-{i}", scanner)
             assert r["success"] is True
             entry = PointsLedger.objects.get(student=scanner, attendance_session=session)
-            assert entry.category == "SCAN" and entry.points == POINTS["SCAN"] == 4
+            assert entry.category == "SCAN" and entry.points == POINTS["SCAN"] == 3
 
 
 @pytest.mark.django_db
 class TestPoints:
     def test_scan_at_teacher_station_earns_four_and_notification(self, class_session, lecturer_user, enrolled_student, student2_user):
-        """Scanning at a teacher-selected classmate's station: 4 pts + notification."""
+        """Scanning at a teacher-selected classmate's station: 3 pts + notification."""
         from apps.academics.models import Enrollment
         Enrollment.objects.create(student=student2_user, course_offering=class_session.class_definition.course_offering)
         session = _setup_session(class_session, lecturer_user)
@@ -402,7 +402,7 @@ class TestPoints:
         result = validate_and_record_scan("tok-pts", student2_user)
         assert result["success"] is True
         ledger = PointsLedger.objects.get(student=student2_user, attendance_session=session)
-        assert ledger.category == "STATION_SCAN" and ledger.points == POINTS["STATION_SCAN"] == 4
+        assert ledger.category == "STATION_SCAN" and ledger.points == POINTS["STATION_SCAN"] == 3
         from apps.notifications.models import Notification
         assert Notification.objects.filter(user=student2_user, type="ATTENDANCE").exists()
 
@@ -413,10 +413,10 @@ class TestPoints:
         session = _setup_session(class_session, lecturer_user)
         award_scan_points(session, enrolled_student)
         ledger = PointsLedger.objects.get(student=enrolled_student, attendance_session=session)
-        assert ledger.points == POINTS["SCAN"] * 2  # 8 on birthday
+        assert ledger.points == POINTS["SCAN"] * 2  # 6 on birthday
 
     def test_auto_station_owner_gets_full_points_on_first_scan(self, class_session, lecturer_user, enrolled_student, student2_user):
-        """Auto station: owner 5, scanner 4 (FR-048)."""
+        """Auto station: owner 3, scanner 3 (FR-048)."""
         from apps.academics.models import Enrollment
         Enrollment.objects.create(student=student2_user, course_offering=class_session.class_definition.course_offering)
 

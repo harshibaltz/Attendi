@@ -127,10 +127,10 @@ class PointsLedger(TimeStampedUUIDModel):
     """Attendance points per student per session (FR-048).
 
     Categories and default points (settings-overridable):
-      AUTO_STATION       5 - system-picked station (also marked present on pick)
-      TEACHER_STATION    5 - lecturer-picked station (also marked present)
-      STATION_SCAN       4 - scanned a classmate's station QR
-      SCAN               4 - scanned the projector QR
+      AUTO_STATION       3 - system-picked station (also marked present on pick)
+      TEACHER_STATION    3 - lecturer-picked station (also marked present)
+      STATION_SCAN       3 - scanned a classmate's station QR
+      SCAN               3 - scanned the projector QR
       MANUAL             0 - added manually after the session (discouraged)
     """
     class Category(models.TextChoices):

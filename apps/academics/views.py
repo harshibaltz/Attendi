@@ -39,7 +39,6 @@ from .models import (
 from .services import (
     allowed_course_levels,
     effective_registration_deadline,
-    enroll_cohort,
     registration_is_closed,
 )
 from .serializers import (
@@ -503,10 +502,9 @@ class CourseOfferingDetailView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Assigning a lecturer must hand them a ready-to-use classroom: the
-        # offering is theirs (so it shows on their panel and attendance works),
-        # and an empty offering is primed with its cohort so there are students
-        # to mark. Locked so a concurrent assignment cannot double-enroll.
+        # Assigning a lecturer hands them the offering so it shows on their
+        # panel and attendance works. Students register themselves; nobody is
+        # added to the classroom automatically.
         with transaction.atomic():
             offering = CourseOffering.objects.select_for_update().get(id=offering_id)
             previous_lecturer_id = offering.lecturer_id
@@ -522,8 +520,6 @@ class CourseOfferingDetailView(APIView):
                 update_fields.append("registration_deadline")
             if update_fields:
                 offering.save(update_fields=[*update_fields, "updated_at"])
-            if lecturer_sent and lecturer is not None and not Enrollment.objects.filter(course_offering=offering).exists():
-                enroll_cohort(offering)
             if department_ids is not None:
                 removed_ids = set(offering.departments.values_list("id", flat=True)) - set(department_ids)
                 offering.departments.set(department_ids)
@@ -535,8 +531,6 @@ class CourseOfferingDetailView(APIView):
                     enrollment.status = Enrollment.Status.DROPPED
                     enrollment.dropped_at = tz.now()
                     enrollment.save(update_fields=["status", "dropped_at", "updated_at"])
-                if offering.lecturer_id:
-                    enroll_cohort(offering)
         audit(
             user=request.user,
             action="COURSE_OFFERING_UPDATED",

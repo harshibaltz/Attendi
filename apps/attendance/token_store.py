@@ -386,8 +386,8 @@ def validate_and_record_scan(token: str, requesting_user) -> dict:
         )
         station = activate_scanned_station(session, requesting_user)
 
-        # Points: scanners earn 4 pts (projector or student station); the
-        # station owner earns 5 pts when their QR is first scanned.
+        # Points: scanners earn 3 pts (projector or student station); the
+        # station owner also earns 3 pts when their QR is first scanned.
         award_scan_points(session, requesting_user, checkpoint=checkpoint)
         is_student_station = checkpoint is not None and checkpoint.student.role == "STUDENT"
         if is_student_station:

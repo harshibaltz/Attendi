@@ -1,10 +1,9 @@
-"""Assigning a lecturer to a course offering must immediately hand them a
-usable classroom: they see the course and can run attendance for it, whether or
-not the offering sits in the currently active semester. The admin assignment
-also primes the roster so there is someone to mark.
+"""Assigning a lecturer hands them the course and lets them run attendance,
+whether or not the offering sits in the currently active semester. The roster
+is not auto-enrolled: students register themselves.
 
-These guard the flow: admin assigns -> lecturer sees classroom -> start-flex ->
-student scans.
+These guard the flow: admin assigns -> lecturer sees classroom -> student
+registers -> start-flex -> student scans.
 """
 from datetime import timedelta
 
@@ -68,11 +67,10 @@ def test_assigned_lecturer_sees_offering_from_non_active_semester(
 
 
 @pytest.mark.django_db
-def test_assigning_lecturer_enrolls_the_cohort(
+def test_assigning_lecturer_does_not_enroll_the_cohort(
     api_client, offering, lecturer_user, student_user, system_admin
 ):
-    """A freshly assigned classroom is primed with its cohort so attendance has
-    students to mark out of the box."""
+    """Assignment only hands over the classroom; students choose to register."""
     assert not Enrollment.objects.filter(course_offering=offering).exists()
 
     api_client.force_authenticate(user=system_admin)
@@ -83,9 +81,7 @@ def test_assigning_lecturer_enrolls_the_cohort(
     )
     assert resp.status_code == 200, resp.content
 
-    assert Enrollment.objects.filter(
-        course_offering=offering, student=student_user, status=Enrollment.Status.ACTIVE
-    ).exists()
+    assert not Enrollment.objects.filter(course_offering=offering).exists()
 
 
 @pytest.mark.django_db
@@ -119,6 +115,10 @@ def test_assigned_lecturer_can_run_attendance_in_non_active_semester(
         format="json",
     )
 
+    Enrollment.objects.create(
+        student=student_user, course_offering=offering, status=Enrollment.Status.ACTIVE
+    )
+
     api_client.force_authenticate(user=lecturer_user)
     resp = api_client.post(
         "/api/v1/attendance/start-flex/",
@@ -144,11 +144,10 @@ def test_assigned_lecturer_can_run_attendance_in_non_active_semester(
 
 
 @pytest.mark.django_db
-def test_starting_attendance_primes_an_unprimed_assigned_offering(
+def test_starting_attendance_does_not_prime_an_unprimed_offering(
     api_client, offering, lecturer_user, student_user
 ):
-    """An offering assigned before provisioning existed has a lecturer but no
-    roster. The first attendance start must fill it in."""
+    """An empty classroom stays empty until students register themselves."""
     offering.lecturer = lecturer_user
     offering.save(update_fields=["lecturer"])
     assert not Enrollment.objects.filter(course_offering=offering).exists()
@@ -160,10 +159,8 @@ def test_starting_attendance_primes_an_unprimed_assigned_offering(
         format="json",
     )
     assert resp.status_code == 201, resp.content
-    assert resp.json()["data"]["eligible_students"] >= 1
-    assert Enrollment.objects.filter(
-        course_offering=offering, student=student_user, status=Enrollment.Status.ACTIVE
-    ).exists()
+    assert resp.json()["data"]["eligible_students"] == 0
+    assert not Enrollment.objects.filter(course_offering=offering).exists()
 
 
 @pytest.mark.django_db

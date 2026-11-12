@@ -1,13 +1,14 @@
 """Station auto-selection and points awarding (FR-047/048 + gamification).
 
 Points (settings-overridable):
-  AUTO_STATION       5 - station picked by the system (the student is also
+  AUTO_STATION       3 - station picked by the system (the student is also
                          marked present as soon as they are selected)
   STUDENT_OF_CLASS  10 - algorithm-picked star of the session (once per
                          student per course - never repeated for the same
                          course, still eligible for other courses)
-  TEACHER_STATION    5 - station picked by the lecturer
-  STATION_SCAN       4 - regular QR scan (projector or a classmate's station)
+  TEACHER_STATION    3 - station picked by the lecturer
+  STATION_SCAN       3 - QR scan at a classmate's station
+  SCAN               3 - QR scan at the projector
   MANUAL             0 - added manually after the session (discouraged)
 
 Special day (birthday): every award the student earns that day is DOUBLED.
@@ -23,10 +24,10 @@ from apps.academics.models import Enrollment
 from .models import AttendanceCheckpoint, AttendanceRecord, AttendanceSession, PointsLedger
 
 POINTS = {
-    "AUTO_STATION": getattr(settings, "ATTENDANCE_POINTS_AUTO_STATION", 5),
-    "TEACHER_STATION": getattr(settings, "ATTENDANCE_POINTS_TEACHER_STATION", 5),
-    "STATION_SCAN": getattr(settings, "ATTENDANCE_POINTS_STATION_SCAN", 4),
-    "SCAN": getattr(settings, "ATTENDANCE_POINTS_SCAN", 4),
+    "AUTO_STATION": getattr(settings, "ATTENDANCE_POINTS_AUTO_STATION", 3),
+    "TEACHER_STATION": getattr(settings, "ATTENDANCE_POINTS_TEACHER_STATION", 3),
+    "STATION_SCAN": getattr(settings, "ATTENDANCE_POINTS_STATION_SCAN", 3),
+    "SCAN": getattr(settings, "ATTENDANCE_POINTS_SCAN", 3),
     "MANUAL": getattr(settings, "ATTENDANCE_POINTS_MANUAL", 0),
     "STUDENT_OF_CLASS": getattr(settings, "ATTENDANCE_POINTS_STUDENT_OF_CLASS", 10),
 }
@@ -263,8 +264,8 @@ def award_station_points(attendance_session: AttendanceSession, checkpoint: Atte
     final = _celebrate(checkpoint.student, base, category, session=attendance_session, when=when)
     if entry is not None:
         # Auto stations must already have checked in, so they normally hold a
-        # scan entry (4 pts). Station duty replaces it with the station award
-        # instead of adding a second ledger row (one row per session).
+        # scan entry. Station duty replaces it with the station award instead of
+        # adding a second ledger row (one row per session).
         entry.category = category
         entry.points = final
         entry.save(update_fields=["category", "points", "updated_at"])
@@ -294,7 +295,7 @@ def activate_scanned_station(attendance_session, student):
 
 @transaction.atomic
 def award_scan_points(attendance_session: AttendanceSession, student, checkpoint=None, when=None) -> int:
-    """Scanner points: 5 at a student station (bonus), 3 at the projector.
+    """Scanner points: 3 at a student station or the projector.
     Doubled on the student's birthday."""
     attendance_session = AttendanceSession.objects.select_for_update().get(id=attendance_session.id)
     if PointsLedger.objects.filter(student=student, attendance_session=attendance_session).exists():
